@@ -3,20 +3,9 @@
 These instructions apply to the entire repository. Read
 `DEVIN_IMPLEMENTATION_PLAN.md` before proposing or implementing changes.
 
-## Synced project material
-
-This directory originated as a local mirror of the ChatGPT project “Fintech
-Startup Internal Tools.”
-
-- Treat every file under `sources/` as read-only reference material.
-- Do not edit, rename, move, delete, commit, or upload files under `sources/`.
-- The Power Apps comparison documents in the repository root are research
-  references, not application source code.
-
 ## Objective and timebox
 
-Build a local evaluation prototype named **Fintech Ops Console** in about two
-hours. It must demonstrate:
+Build a local evaluation prototype named **Fintech Ops Console**. It must demonstrate:
 
 1. A Refund Operations workflow with backend-enforced authorization, controlled
    state transitions, and an append-only audit trail.
@@ -39,7 +28,6 @@ than feature count or visual polish.
 - Do not expand scope. If blocked for more than ten minutes, report the cause,
   evidence, and two recovery options instead of repeatedly trying unrelated
   approaches.
-- Never merge, deploy, or connect external systems automatically.
 
 ## Fixed prototype stack
 
@@ -59,9 +47,7 @@ money; never use floating-point values for refund amounts.
 
 ## Security and data-safety invariants
 
-- Use synthetic data only. Never request, read, copy, log, or transmit real
-  customer data, KYC documents, transaction data, company secrets, or production
-  credentials.
+- Use synthetic data only.
 - Do not connect payment processors, KYC systems, corporate SSO, production
   feature-flag services, or production infrastructure.
 - UI visibility is not authorization. Enforce authentication, authorization,
@@ -75,8 +61,7 @@ money; never use floating-point values for refund amounts.
 - Audit events are append-only through the application. Do not expose update or
   delete endpoints for them. Describe the prototype audit trail as
   “append-only through the application,” not tamper-proof or immutable.
-- Do not present this prototype as production-ready. Clearly identify mocked
-  identity and missing production controls.
+- Clearly identify mocked identity and missing production controls.
 
 ## Required domain policy
 
