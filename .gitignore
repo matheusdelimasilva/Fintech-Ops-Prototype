@@ -1,0 +1,43 @@
+# Synced project/reference material
+sources/
+Power_Apps_vs_Devin_Working_Analysis*.docx
+Power_Apps_vs_Devin_Working_Analysis_EDITABLE.md
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Local runtime data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# IDE and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and temporary files
+*.log
+tmp/
+.tmp/
