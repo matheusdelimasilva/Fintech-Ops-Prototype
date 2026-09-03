@@ -1,5 +1,6 @@
 import { UserSwitcher } from './identity/UserSwitcher.tsx'
 import { useIdentity } from './identity/context.ts'
+import { RefundsPage } from './refunds/RefundsPage.tsx'
 import { useHashRoute } from './router.ts'
 
 const NAV_ITEMS = [
@@ -46,7 +47,7 @@ function App() {
           'The browser sends only a demo user id; the server resolves role and permissions.'}
       </p>
       <main key={userId} className="app-main">
-        {route.page === 'refunds' && <PlaceholderPage title="Refund Operations" />}
+        {route.page === 'refunds' && <RefundsPage selectedId={route.refundId} />}
         {route.page === 'feature-flags' && <PlaceholderPage title="Feature Flags" />}
         {route.page === 'audit' && <PlaceholderPage title="Audit Trail" />}
       </main>
