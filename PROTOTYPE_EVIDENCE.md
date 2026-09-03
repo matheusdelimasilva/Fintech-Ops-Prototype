@@ -7,6 +7,13 @@ rewrite earlier sections.
 All data and identities in this prototype are synthetic. Identity is a demo
 user ID header resolved server-side; there is no real authentication.
 
+**Elapsed milestones.** Wall-clock effort per checkpoint was not captured for
+checkpoints 1–3; the agent sessions that produced them were interrupted and
+resumed, so no reliable start/stop times exist. The only timing evidence is the
+commit history (`git log --format='%h %ci %s'`), which records when each layer
+was committed, not how long it took. Later checkpoints should record start and
+end times explicitly.
+
 ## Checkpoint index
 
 | # | Checkpoint | PR | Status |
@@ -176,7 +183,12 @@ later checkpoints:
 - The service owns the unit of work: one `commit()` after the refund update and
   the audit insert; any exception rolls back. Routes never commit.
 - Stale-write guard: the transition is applied as `UPDATE ... WHERE id = ? AND
-  refund_status IN (<allowed_from>)`; zero rows affected → `409`.
+  refund_status = <status the service observed and snapshotted>`; zero rows
+  affected → `409`. Review of the first version (which matched any allowed
+  source status) found that an interleaved `pending → escalated` would let a
+  later reject succeed while its audit event claimed `pending → rejected`; the
+  guard now requires the exact observed status so `before_state` is always the
+  true immediate predecessor.
 - One shared `audit.refund_snapshot(refund)` produces before/after state for
   seeded **and** live events; the seed builds historical "before" states by
   copying the snapshot and explicitly nulling the action fields.
@@ -194,15 +206,20 @@ later checkpoints:
   `refund_service.perform_refund_action(session, actor, refund_id, action, reason)`.
 - `policy.py`: `RefundAction`, `Denial`, `refund_action_denial`, and
   `can_escalate_refunds` on the role policy (also exposed in `GET /api/session`).
-- `refund_service.py`: declarative `ALLOWED_FROM` / `TARGET_STATUS` /
-  `AUDIT_ACTION` maps, guarded conditional update, single commit,
-  `allowed_actions(actor, refund)`.
+- `refund_service.py`: one immutable `Transition(allowed_from, target,
+  audit_action)` per action in `TRANSITIONS`, exact-status guarded update,
+  single commit, `allowed_actions(actor, refund)`. Denial codes map to error
+  classes and user-facing messages here, so `Denial` itself is just
+  `(code, details)`.
 - `audit.py`: `refund_snapshot` and `record_refund_event` (`evt_<uuid4 hex>` IDs;
   `occurred_at == refund.last_action_at == refund.updated_at`). Only GET
-  routes exist for audit events.
+  routes exist for audit events. Timestamp formatting lives in a neutral
+  `timeutil.py` shared by audit, service, and API schemas, so audit does not
+  import from the presentation layer.
 - `errors.py`: `ApprovalLimitExceededError`, `ActionNotPermittedForRoleError`,
   `UnsupportedCurrencyError`, and a catch-all handler so unexpected failures
-  return `500 INTERNAL_ERROR` in the standard envelope with no details leaked.
+  return `500 INTERNAL_ERROR` in the standard envelope with no details leaked;
+  the underlying exception is logged server-side with `logger.exception`.
 - Seed audit events reshaped to the shared 8-key snapshot (adds `last_action*`).
 - README: current state, mutation usage, and the full error-code list.
 
@@ -210,9 +227,9 @@ later checkpoints:
 
 ```bash
 cd backend
-./.venv/bin/pytest                      # 131 passed
+./.venv/bin/pytest                      # 153 passed
 ./.venv/bin/ruff check .                # All checks passed
-./.venv/bin/ruff format --check .       # 26 files already formatted
+./.venv/bin/ruff format --check .       # 27 files already formatted
 
 cd frontend && nvm use 22
 npm run lint                            # clean (frontend untouched)
@@ -230,17 +247,19 @@ Live `uvicorn` smoke run against a fresh SQLite file (`curl`):
 | Sam `POST .../rfnd_001/approve` with reason `"   "` | `422 VALIDATION_ERROR` (`string_too_short`) |
 | `GET /api/audit-events?entity_id=rfnd_003` | two events, `pending→escalated` then `escalated→approved`, newest first |
 
-### Automated test coverage (131 tests, up from 30; most new cases are parametrized)
+### Automated test coverage (153 tests, up from 30; most new cases are parametrized)
 
-`test_refund_policy.py` (pure, no DB): inclusive limits for approve and reject
-at 49999 / 50000 / 50001 / 500000 / 500001 per role; support/ops may escalate
-any amount; admin may not escalate; every role × action fails closed on `EUR`.
+`test_refund_policy.py` (pure, no DB): the full role × {approve, reject} ×
+{49999, 50000, 50001, 500000, 500001} matrix (30 cases) with the complete
+`details` payload asserted on every denial; role × escalate × the same five
+amounts (admin denied, others allowed regardless of amount); admin has no upper
+bound; every role × action fails closed on `EUR`.
 
 `test_refund_service.py` (service, fresh session for every assertion): success
 commits the refund and exactly one audit event with matching timestamps and a
 before/after pair of identical shape; a failing audit recorder rolls back the
 refund update; `403` / `409` / `404` leave the row and audit count unchanged;
-the stale-write guard (below); `allowed_actions` combines policy and
+the two stale-write guard tests (below); `allowed_actions` combines policy and
 transition legality.
 
 `test_refund_mutations.py` (HTTP): limit boundaries via the API for both
@@ -253,7 +272,9 @@ ordering (`401` beats bad body, `403` beats bad state, `404` for unknown id);
 browser-supplied role/limit headers and body fields ignored; the complete
 before/after audit event compared field-by-field and key-set-compared against a
 seeded event; `500 INTERNAL_ERROR` envelope with nothing persisted when the
-audit write fails (`raise_server_exceptions=False`); `allowed_actions` per user
+audit write fails (`raise_server_exceptions=False`), while `caplog` shows the
+real exception logged at ERROR with method and path and absent from the
+response body; `allowed_actions` per user
 on pending / escalated / approved refunds in list and detail, shrinking after
 each mutation.
 
@@ -274,9 +295,18 @@ guarded `UPDATE` executes, session B approves the same refund and commits; A's
 one new audit event exists. The interleaving point is injected by monkeypatching
 the snapshot call the service makes between load and update.
 
-This proves the conditional update detects a state change made by another
-session before the write. It is **not** a concurrency or load test: it does not
-exercise SQLite's locking, threads, or overlapping write transactions. The
+`test_guard_rejects_a_stale_snapshot_even_when_the_new_status_also_allows_the_action`
+is the review-found case: A snapshots `pending`; B escalates and commits; A
+rejects. Because `escalated` is itself a legal source for reject, a guard on
+"any allowed status" let A through and recorded `pending → rejected` for what
+was really `escalated → rejected`. With the exact-status guard A gets `409`
+with `current_status: escalated`, the only event is `pending → escalated`, and
+A's retry against the current row records `escalated → rejected`. The test was
+run against the old guard to confirm it fails there.
+
+Both tests prove the conditional update detects a state change made by another
+session before the write. They are **not** concurrency or load tests: they do
+not exercise SQLite's locking, threads, or overlapping write transactions. The
 race between two truly simultaneous writers is bounded by SQLite's single-writer
 lock plus this guard, but that path has not been exercised.
 
@@ -293,6 +323,18 @@ lock plus this guard, but that path has not been exercised.
 - The evidence ledger (PR #3) had not been merged when this checkpoint began,
   so its branch was merged into this one to append here; if #3 merges first the
   diff of #4 shrinks to this checkpoint alone.
+- PR #4 review by the project owner found nine issues, fixed before merge:
+  the guard matched any allowed source status instead of the observed one
+  (P1, reproduced by the owner with an escalate-then-reject interleave); the
+  catch-all handler discarded the exception instead of logging it; `audit.py`
+  imported `to_utc_iso` from the API schema module; the three transition maps
+  were consolidated into one `Transition` record per action; `Denial` dropped
+  the `message` field to match the agreed `(code, details)` shape; the policy
+  matrix was widened to the full role × action × five-amount table; the
+  Python 3.10–3.13 README/`.python-version` change from `main` was merged in;
+  and this ledger gained the elapsed-milestones statement above.
+- The owner declined a Swagger `/docs` browser run for this backend-only
+  checkpoint; verification is `pytest` plus the `curl` smoke run above.
 
 ### Limitations at this checkpoint
 
