@@ -20,10 +20,11 @@ All identities and business data are synthetic.
 
 ## Current state
 
-Scaffold only: a FastAPI backend exposing `GET /health` and a React/Vite
-placeholder page that displays backend health. Refund Operations, Feature
-Flags, and the Audit Trail are not implemented yet, so there is no database or
-seed data.
+Backend foundation: SQLite persistence (SQLAlchemy), deterministic synthetic
+seed data, server-side demo identity resolution, and read-only JSON endpoints
+for the session, refunds, feature flags, and audit events. Refund/feature-flag
+mutations, RBAC enforcement on writes, and the frontend modules are not
+implemented yet; the frontend is still a placeholder page showing backend health.
 
 ## Prerequisites
 
@@ -46,7 +47,20 @@ python3 -m venv .venv
 
 Health check: `curl http://localhost:8000/health` returns
 `{"status":"ok","service":"fintech-ops-console-api"}`.
-Interactive API docs: http://localhost:8000/docs
+Interactive API docs: http://localhost:8000/docs (use **Authorize** to set the
+demo user header).
+
+Every `/api/*` request must carry an `X-Demo-User-Id` header naming one of the
+server-defined synthetic users: `user_sam_support`, `user_olivia_ops`, or
+`user_avery_admin`. The backend resolves role and permissions from that ID;
+nothing else sent by the client is trusted. Example:
+
+```bash
+curl -H 'X-Demo-User-Id: user_olivia_ops' http://localhost:8000/api/session
+curl -H 'X-Demo-User-Id: user_olivia_ops' 'http://localhost:8000/api/refunds?status=pending'
+```
+
+Errors use a stable envelope: `{"error": {"code": "...", "message": "...", "details": {}}}`.
 
 ### Frontend (`frontend/`)
 
@@ -66,7 +80,16 @@ frontend, otherwise the placeholder page reports the API as unreachable.
 
 ### Seed/reset
 
-Not applicable yet — no database exists in the scaffold.
+The backend uses a SQLite file at `backend/fintech_ops.db` (override with the
+`DATABASE_URL` environment variable). On startup it creates the tables and
+loads the deterministic synthetic dataset if the database is empty. To manage
+it explicitly:
+
+```bash
+cd backend
+./.venv/bin/python -m app.seed           # seed only if empty
+./.venv/bin/python -m app.seed --reset   # drop everything and reseed to the known state
+```
 
 ## Prototype limitations
 
