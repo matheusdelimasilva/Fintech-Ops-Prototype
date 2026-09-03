@@ -1,8 +1,11 @@
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class AppError(Exception):
@@ -77,7 +80,14 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=error.status_code, content=error.to_payload())
 
     @app.exception_handler(Exception)
-    async def handle_unexpected(_: Request, __: Exception) -> JSONResponse:
+    async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception(
+            "Unhandled %s while handling %s %s",
+            type(exc).__name__,
+            request.method,
+            request.url.path,
+            exc_info=exc,
+        )
         error = AppError("An unexpected error occurred.")
         return JSONResponse(status_code=error.status_code, content=error.to_payload())
 

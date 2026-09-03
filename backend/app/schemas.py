@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_serializer
@@ -13,12 +13,7 @@ from app.models import (
     Role,
 )
 from app.policy import RefundAction
-
-
-def to_utc_iso(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+from app.timeutil import to_utc_iso
 
 
 class ApiModel(BaseModel):

@@ -4,6 +4,7 @@ State is verified through GET calls (a fresh session per request), never through
 the mutation itself returned.
 """
 
+import logging
 from typing import Any
 
 import pytest
@@ -268,7 +269,7 @@ def test_successful_action_writes_exactly_one_complete_audit_event(client: TestC
 
 
 def test_unexpected_failure_returns_the_error_envelope_and_persists_nothing(
-    seeded_engine: Engine, monkeypatch: pytest.MonkeyPatch
+    seeded_engine: Engine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def explode(*_: Any, **__: Any) -> None:
         raise RuntimeError("audit store unavailable")
@@ -284,7 +285,8 @@ def test_unexpected_failure_returns_the_error_envelope_and_persists_nothing(
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
             before_count = _audit_count(client)
-            response = _post(client, "sam", "approve", "rfnd_001")
+            with caplog.at_level(logging.ERROR, logger="app.errors"):
+                response = _post(client, "sam", "approve", "rfnd_001")
 
             assert response.status_code == 500
             assert _error(response) == {
@@ -296,6 +298,14 @@ def test_unexpected_failure_returns_the_error_envelope_and_persists_nothing(
             assert _audit_count(client) == before_count
     finally:
         app.dependency_overrides.clear()
+
+    # The client sees a generic envelope; the server log keeps the real cause.
+    [record] = [r for r in caplog.records if r.name == "app.errors"]
+    assert record.levelno == logging.ERROR
+    assert "POST /api/refunds/rfnd_001/approve" in record.getMessage()
+    assert record.exc_info is not None
+    assert "audit store unavailable" in str(record.exc_info[1])
+    assert "audit store unavailable" not in response.text
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.identity import CurrentUser
 from app.models import AuditAction, AuditEvent, EntityType, RefundCase
-from app.schemas import to_utc_iso
+from app.timeutil import to_utc_iso
 
 
 def refund_snapshot(refund: RefundCase) -> dict[str, object]:
