@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_serializer
 
 from app.models import (
     AuditAction,
@@ -12,6 +12,7 @@ from app.models import (
     RiskLevel,
     Role,
 )
+from app.policy import RefundAction
 
 
 def to_utc_iso(value: datetime) -> str:
@@ -67,6 +68,16 @@ class RefundOut(ApiModel):
     last_action_by: str | None
     last_action_reason: str | None
     last_action_at: datetime | None
+    allowed_actions: list[RefundAction]
+
+
+ActionReason = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+]
+
+
+class RefundActionRequest(BaseModel):
+    reason: ActionReason
 
 
 class FeatureFlagOut(ApiModel):
