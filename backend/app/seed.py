@@ -12,6 +12,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app import repositories
+from app.audit import refund_snapshot
 from app.db import create_tables, database_url, drop_tables, get_engine, make_session_factory
 from app.models import (
     AuditAction,
@@ -247,12 +248,15 @@ def feature_flags() -> list[FeatureFlag]:
     ]
 
 
-def _refund_snapshot(refund: RefundCase, status: RefundStatus) -> dict[str, object]:
+def _before_action(refund: RefundCase) -> dict[str, object]:
+    """Historical before-state: the seeded row is already final, so undo its recorded action."""
     return {
-        "refund_status": status.value,
-        "amount_cents": refund.amount_cents,
-        "currency": refund.currency,
-        "risk_level": refund.risk_level.value,
+        **refund_snapshot(refund),
+        "refund_status": RefundStatus.PENDING.value,
+        "last_action": None,
+        "last_action_by": None,
+        "last_action_reason": None,
+        "last_action_at": None,
     }
 
 
@@ -271,8 +275,8 @@ def audit_events(refunds: list[RefundCase]) -> list[AuditEvent]:
             action=AuditAction.REFUND_APPROVED,
             entity_type=EntityType.REFUND,
             entity_id=approved.id,
-            before_state=_refund_snapshot(approved, RefundStatus.PENDING),
-            after_state=_refund_snapshot(approved, RefundStatus.APPROVED),
+            before_state=_before_action(approved),
+            after_state=refund_snapshot(approved),
             reason=approved.last_action_reason or "",
         ),
         AuditEvent(
@@ -284,8 +288,8 @@ def audit_events(refunds: list[RefundCase]) -> list[AuditEvent]:
             action=AuditAction.REFUND_REJECTED,
             entity_type=EntityType.REFUND,
             entity_id=rejected.id,
-            before_state=_refund_snapshot(rejected, RefundStatus.PENDING),
-            after_state=_refund_snapshot(rejected, RefundStatus.REJECTED),
+            before_state=_before_action(rejected),
+            after_state=refund_snapshot(rejected),
             reason=rejected.last_action_reason or "",
         ),
         AuditEvent(
@@ -297,8 +301,8 @@ def audit_events(refunds: list[RefundCase]) -> list[AuditEvent]:
             action=AuditAction.REFUND_ESCALATED,
             entity_type=EntityType.REFUND,
             entity_id=escalated.id,
-            before_state=_refund_snapshot(escalated, RefundStatus.PENDING),
-            after_state=_refund_snapshot(escalated, RefundStatus.ESCALATED),
+            before_state=_before_action(escalated),
+            after_state=refund_snapshot(escalated),
             reason=escalated.last_action_reason or "",
         ),
     ]
