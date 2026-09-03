@@ -333,6 +333,22 @@ reason validation, and production confirmation dialog.
 
 ## 11. Implementation sequence and time budget
 
+### Status
+
+Detailed per-checkpoint evidence lives in `PROTOTYPE_EVIDENCE.md`.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 1 — Foundation | **Done** (PR #1, PR #2) | Backend complete: persistence, seed/reset, demo identity, error envelope, read-only endpoints for refunds, feature flags, audit, and session. Frontend is still the scaffold placeholder and does not yet call `/api/*`. |
+| 2 — Refund workflow | Not started | Read-only refund endpoints and seed cases (step 1) already exist; mutations and UI remain. |
+| 3 — RBAC and audit | Not started | Policy table (step 1) and audit model/read endpoints already exist; enforcement on writes, atomic audit writes, UI, and boundary tests remain. |
+| 4 — Feature Flags reuse proof | Not started | Model, seed, and read endpoints (part of step 1) already exist. |
+| 5 — Verification and handoff | Not started | |
+
+Actual sequencing differs from the time budget below: the foundation checkpoint
+absorbed the read-only API surface for all entities so later phases add only
+mutations, enforcement, and UI.
+
 ### Phase 1 — Foundation (0–15 minutes)
 
 1. Inspect the repository and note existing constraints.
