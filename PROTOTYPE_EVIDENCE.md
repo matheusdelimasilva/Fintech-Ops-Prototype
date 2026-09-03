@@ -13,7 +13,7 @@ user ID header resolved server-side; there is no real authentication.
 |---|---|---|---|
 | 1 | Runnable skeleton (scaffold + `/health`) | [#1](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/1) | Merged |
 | 2 | Backend foundation: persistence, seed, demo identity, read-only API | [#2](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/2) | Merged |
-| 3 | Refund mutations, RBAC enforcement, atomic audit writes | — | Not started |
+| 3 | Refund mutations, RBAC enforcement, atomic audit writes | [#4](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/4) | In review |
 | 4 | Frontend shell + Refund Operations UI | — | Not started |
 | 5 | Feature Flags reuse proof | — | Not started |
 | 6 | Final verification and handoff | — | Not started |
@@ -149,3 +149,161 @@ startup seeds an empty DB.
 Real SSO, secrets management, production database, tamper-resistant audit
 retention, DLP, vulnerability management, backups, monitoring, incident
 response, and real financial-system integrations are all out of scope.
+
+## Checkpoint 3 — Refund mutations, RBAC enforcement, atomic audit writes (PR #4)
+
+### Planning
+
+Three-round design interview (29 decisions) before code. Decisions that bind
+later checkpoints:
+
+- Failure precedence: authentication → body validation → lookup →
+  authorization → state transition. An unauthorized caller never learns the
+  refund's state from the error; a missing identity wins over a bad body.
+- Authorization is a pure function, `policy.refund_action_denial(role, action,
+  amount_cents, currency) -> Denial | None`, with no database or HTTP
+  dependency. The workflow service maps a `Denial` to the matching `403`/`422`.
+- USD only. Any other currency fails closed (`422 UNSUPPORTED_CURRENCY`)
+  rather than being compared against a USD limit.
+- Admin may **not** escalate (escalation is a request for higher authority);
+  support and operations may escalate any pending refund regardless of amount.
+  A refund's `escalated` status never widens anyone's approval limit.
+- Structured `403`s: `APPROVAL_LIMIT_EXCEEDED` carries `role, action,
+  amount_cents, approval_limit_cents`; `ACTION_NOT_PERMITTED_FOR_ROLE` carries
+  `role, action`. `409 INVALID_STATE_TRANSITION` carries `action,
+  current_status, allowed_from`.
+- Reason: Pydantic strips whitespace, then requires 1–1000 characters.
+- The service owns the unit of work: one `commit()` after the refund update and
+  the audit insert; any exception rolls back. Routes never commit.
+- Stale-write guard: the transition is applied as `UPDATE ... WHERE id = ? AND
+  refund_status IN (<allowed_from>)`; zero rows affected → `409`.
+- One shared `audit.refund_snapshot(refund)` produces before/after state for
+  seeded **and** live events; the seed builds historical "before" states by
+  copying the snapshot and explicitly nulling the action fields.
+- `RefundOut.allowed_actions` is a server-computed hint for the calling user
+  from the same policy + transition tables; every mutation re-authorizes.
+- Response is the updated `RefundOut` (same shape as GET); the audit event is
+  read from `GET /api/audit-events?entity_id=...`.
+- Skipped for now: exhaustive OpenAPI error declarations, a clock seam, and a
+  request-body `expected_status`.
+
+### Delivered
+
+- `POST /api/refunds/{id}/approve`, `/reject`, `/escalate` with body
+  `{"reason"}`; all three delegate to
+  `refund_service.perform_refund_action(session, actor, refund_id, action, reason)`.
+- `policy.py`: `RefundAction`, `Denial`, `refund_action_denial`, and
+  `can_escalate_refunds` on the role policy (also exposed in `GET /api/session`).
+- `refund_service.py`: declarative `ALLOWED_FROM` / `TARGET_STATUS` /
+  `AUDIT_ACTION` maps, guarded conditional update, single commit,
+  `allowed_actions(actor, refund)`.
+- `audit.py`: `refund_snapshot` and `record_refund_event` (`evt_<uuid4 hex>` IDs;
+  `occurred_at == refund.last_action_at == refund.updated_at`). Only GET
+  routes exist for audit events.
+- `errors.py`: `ApprovalLimitExceededError`, `ActionNotPermittedForRoleError`,
+  `UnsupportedCurrencyError`, and a catch-all handler so unexpected failures
+  return `500 INTERNAL_ERROR` in the standard envelope with no details leaked.
+- Seed audit events reshaped to the shared 8-key snapshot (adds `last_action*`).
+- README: current state, mutation usage, and the full error-code list.
+
+### Commands run and results
+
+```bash
+cd backend
+./.venv/bin/pytest                      # 131 passed
+./.venv/bin/ruff check .                # All checks passed
+./.venv/bin/ruff format --check .       # 26 files already formatted
+
+cd frontend && nvm use 22
+npm run lint                            # clean (frontend untouched)
+npm run build                           # built (frontend untouched)
+```
+
+Live `uvicorn` smoke run against a fresh SQLite file (`curl`):
+
+| Request | Result |
+|---|---|
+| Sam `POST /api/refunds/rfnd_003/approve` (50001 cents) | `403 APPROVAL_LIMIT_EXCEEDED`, `details.approval_limit_cents = 50000` |
+| Sam `POST .../rfnd_003/escalate` with reason `"  above my limit  "` | `200`, status `escalated`, stored reason `"above my limit"`, `allowed_actions: []` |
+| Olivia `POST .../rfnd_003/approve` (escalated, within her limit) | `200`, status `approved` |
+| Olivia repeats the approve | `409 INVALID_STATE_TRANSITION`, `allowed_from: ["escalated","pending"]` |
+| Sam `POST .../rfnd_001/approve` with reason `"   "` | `422 VALIDATION_ERROR` (`string_too_short`) |
+| `GET /api/audit-events?entity_id=rfnd_003` | two events, `pending→escalated` then `escalated→approved`, newest first |
+
+### Automated test coverage (131 tests, up from 30; most new cases are parametrized)
+
+`test_refund_policy.py` (pure, no DB): inclusive limits for approve and reject
+at 49999 / 50000 / 50001 / 500000 / 500001 per role; support/ops may escalate
+any amount; admin may not escalate; every role × action fails closed on `EUR`.
+
+`test_refund_service.py` (service, fresh session for every assertion): success
+commits the refund and exactly one audit event with matching timestamps and a
+before/after pair of identical shape; a failing audit recorder rolls back the
+refund update; `403` / `409` / `404` leave the row and audit count unchanged;
+the stale-write guard (below); `allowed_actions` combines policy and
+transition legality.
+
+`test_refund_mutations.py` (HTTP): limit boundaries via the API for both
+approve and reject; escalate allowed / forbidden by role; escalated refunds
+still respect limits; all illegal transitions from `approved`, `rejected`, and
+`escalated`; repeating a completed action; eight invalid-reason bodies
+(including 1001 chars and 1001 chars padded with whitespace); 1- and
+1000-character reasons stored stripped in both the refund and the audit event;
+ordering (`401` beats bad body, `403` beats bad state, `404` for unknown id);
+browser-supplied role/limit headers and body fields ignored; the complete
+before/after audit event compared field-by-field and key-set-compared against a
+seeded event; `500 INTERNAL_ERROR` envelope with nothing persisted when the
+audit write fails (`raise_server_exceptions=False`); `allowed_actions` per user
+on pending / escalated / approved refunds in list and detail, shrinking after
+each mutation.
+
+`test_identity.py`: the identity guard is now derived from the OpenAPI schema —
+every `/api/*` operation (10, including the three POSTs) returns `401` without
+the header, so a new route without the dependency fails the suite.
+
+`test_seed.py`: seeded audit `after_state` equals `refund_snapshot(row)` and
+`before_state` has the same keys; reset determinism still holds.
+
+### Stale-write guard — what the test does and does not show
+
+`test_stale_write_is_rejected_by_the_guarded_update` runs two real sessions
+through the real service: session A loads and authorizes `rfnd_001`; before A's
+guarded `UPDATE` executes, session B approves the same refund and commits; A's
+`UPDATE` matches zero rows and the service raises `409` with
+`current_status: approved`. Afterwards the refund carries B's action and exactly
+one new audit event exists. The interleaving point is injected by monkeypatching
+the snapshot call the service makes between load and update.
+
+This proves the conditional update detects a state change made by another
+session before the write. It is **not** a concurrency or load test: it does not
+exercise SQLite's locking, threads, or overlapping write transactions. The
+race between two truly simultaneous writers is bounded by SQLite's single-writer
+lock plus this guard, but that path has not been exercised.
+
+### Human interventions
+
+- Design interview: 29 decisions answered by the project owner; the owner
+  changed four recommendations (failure precedence puts authentication first;
+  the policy function takes `role` and `currency`; no `**overrides` on the
+  snapshot helper; tests ship with the behavior they cover rather than in a
+  trailing commit) and added five test cases (reason-length boundaries,
+  stripped-reason equality across refund and audit, complete snapshot-shape
+  comparison, `raise_server_exceptions=False`, and honest scoping of the
+  guard test).
+- The evidence ledger (PR #3) had not been merged when this checkpoint began,
+  so its branch was merged into this one to append here; if #3 merges first the
+  diff of #4 shrinks to this checkpoint alone.
+
+### Limitations at this checkpoint
+
+- No UI exists yet; every check above is API-level. Browser verification of
+  the refund workflow is deferred to checkpoint 4.
+- Feature-flag mutations, environment-specific authorization, and production
+  confirmation are not implemented; the flag policy fields exist only as data.
+- Concurrency: see the guard section above.
+- The audit trail is append-only through the application only; SQLite offers no
+  tamper evidence. There is no audit event for denied attempts (by design in the
+  plan: failed requests must not create a success event; a separate
+  security-event log is out of scope).
+- Timestamps are naive UTC in SQLite and serialized with a `Z` suffix.
+- Identity remains a plain header with no authentication, session, or CSRF story.

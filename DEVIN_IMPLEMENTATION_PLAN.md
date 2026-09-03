@@ -340,8 +340,8 @@ Detailed per-checkpoint evidence lives in `PROTOTYPE_EVIDENCE.md`.
 | Phase | Status | Notes |
 |---|---|---|
 | 1 — Foundation | **Done** (PR #1, PR #2) | Backend complete: persistence, seed/reset, demo identity, error envelope, read-only endpoints for refunds, feature flags, audit, and session. Frontend is still the scaffold placeholder and does not yet call `/api/*`. |
-| 2 — Refund workflow | Not started | Read-only refund endpoints and seed cases (step 1) already exist; mutations and UI remain. |
-| 3 — RBAC and audit | Not started | Policy table (step 1) and audit model/read endpoints already exist; enforcement on writes, atomic audit writes, UI, and boundary tests remain. |
+| 2 — Refund workflow | **Backend done** (PR #4); UI not started | `POST /api/refunds/{id}/approve\|reject\|escalate` with required trimmed reasons, declarative state machine, guarded conditional update, and `allowed_actions` per caller. Queue/detail/action UI (steps 2 and 4) remains. |
+| 3 — RBAC and audit | **Backend done** (PR #4); UI not started | Pure `refund_action_denial` policy with structured `403` codes, admin cannot escalate, USD-only fail-closed, audit event written in the same transaction as the refund, boundary/bypass/ordering/atomicity tests. Audit UI (step 4) remains. |
 | 4 — Feature Flags reuse proof | Not started | Model, seed, and read endpoints (part of step 1) already exist. |
 | 5 — Verification and handoff | Not started | |
 
