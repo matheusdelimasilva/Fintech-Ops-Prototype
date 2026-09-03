@@ -16,49 +16,48 @@ OPS = Role.OPERATIONS_MANAGER
 ADMIN = Role.ADMIN
 DECIDING_ACTIONS = [RefundAction.APPROVE, RefundAction.REJECT]
 
+# The five amounts that matter: one inside, on, and just past each finite limit.
+AMOUNTS = [49_999, 50_000, 50_001, 500_000, 500_001]
+LIMITS: dict[Role, int | None] = {SUPPORT: 50_000, OPS: 500_000, ADMIN: None}
 
+
+@pytest.mark.parametrize("amount_cents", AMOUNTS)
 @pytest.mark.parametrize("action", DECIDING_ACTIONS)
-@pytest.mark.parametrize(
-    ("role", "amount_cents", "allowed"),
-    [
-        (SUPPORT, 49_999, True),
-        (SUPPORT, 50_000, True),
-        (SUPPORT, 50_001, False),
-        (SUPPORT, 500_000, False),
-        (OPS, 50_001, True),
-        (OPS, 500_000, True),
-        (OPS, 500_001, False),
-        (ADMIN, 500_001, True),
-        (ADMIN, 10_000_000_000, True),
-    ],
-)
+@pytest.mark.parametrize("role", list(Role))
 def test_approval_limits_are_inclusive_per_role(
-    role: Role, action: RefundAction, amount_cents: int, allowed: bool
+    role: Role, action: RefundAction, amount_cents: int
 ) -> None:
+    limit = LIMITS[role]
     denial = refund_action_denial(role, action, amount_cents, "USD")
 
-    if allowed:
+    if limit is None or amount_cents <= limit:
         assert denial is None
     else:
         assert denial is not None
         assert denial.code == APPROVAL_LIMIT_EXCEEDED
-        assert denial.details["amount_cents"] == amount_cents
-        assert denial.details["approval_limit_cents"] == {SUPPORT: 50_000, OPS: 500_000}[role]
-        assert denial.details["action"] == action.value
+        assert denial.details == {
+            "role": role.value,
+            "action": action.value,
+            "amount_cents": amount_cents,
+            "approval_limit_cents": limit,
+        }
 
 
-@pytest.mark.parametrize("amount_cents", [100, 50_001, 500_001])
-@pytest.mark.parametrize("role", [SUPPORT, OPS])
-def test_support_and_ops_may_escalate_any_amount(role: Role, amount_cents: int) -> None:
-    assert refund_action_denial(role, RefundAction.ESCALATE, amount_cents, "USD") is None
+def test_admin_has_no_upper_bound() -> None:
+    assert refund_action_denial(ADMIN, RefundAction.APPROVE, 10_000_000_000, "USD") is None
 
 
-def test_admin_may_not_escalate() -> None:
-    denial = refund_action_denial(ADMIN, RefundAction.ESCALATE, 100, "USD")
+@pytest.mark.parametrize("amount_cents", AMOUNTS)
+@pytest.mark.parametrize("role", list(Role))
+def test_escalation_depends_on_role_not_amount(role: Role, amount_cents: int) -> None:
+    denial = refund_action_denial(role, RefundAction.ESCALATE, amount_cents, "USD")
 
-    assert denial is not None
-    assert denial.code == ACTION_NOT_PERMITTED_FOR_ROLE
-    assert denial.details == {"role": "admin", "action": "escalate"}
+    if role is ADMIN:
+        assert denial is not None
+        assert denial.code == ACTION_NOT_PERMITTED_FOR_ROLE
+        assert denial.details == {"role": "admin", "action": "escalate"}
+    else:
+        assert denial is None
 
 
 @pytest.mark.parametrize("action", list(RefundAction))

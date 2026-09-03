@@ -59,7 +59,6 @@ def policy_for(role: Role) -> RolePolicy:
 @dataclass(frozen=True)
 class Denial:
     code: str
-    message: str
     details: dict[str, object]
 
 
@@ -79,7 +78,6 @@ def refund_action_denial(
     if currency != SUPPORTED_CURRENCY:
         return Denial(
             UNSUPPORTED_CURRENCY,
-            f"Only {SUPPORTED_CURRENCY} refunds are supported.",
             {"currency": currency, "supported_currency": SUPPORTED_CURRENCY},
         )
 
@@ -89,7 +87,6 @@ def refund_action_denial(
         if not policy.can_escalate_refunds:
             return Denial(
                 ACTION_NOT_PERMITTED_FOR_ROLE,
-                f"Role {role.value} may not escalate refunds.",
                 {"role": role.value, "action": action.value},
             )
         return None
@@ -98,7 +95,6 @@ def refund_action_denial(
     if limit is not None and amount_cents > limit:
         return Denial(
             APPROVAL_LIMIT_EXCEEDED,
-            f"Refund amount exceeds the {role.value} approval limit.",
             {
                 "role": role.value,
                 "action": action.value,
