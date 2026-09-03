@@ -30,6 +30,13 @@ def _audit_count(session: Session) -> int:
     return session.scalar(select(func.count()).select_from(AuditEvent)) or 0
 
 
+def _transitions(session: Session, refund_id: str) -> list[tuple[object, object]]:
+    events = session.scalars(
+        select(AuditEvent).where(AuditEvent.entity_id == refund_id).order_by(AuditEvent.occurred_at)
+    ).all()
+    return [(e.before_state["refund_status"], e.after_state["refund_status"]) for e in events]
+
+
 def test_success_commits_refund_and_one_audit_event_together(
     factory: sessionmaker[Session],
 ) -> None:
@@ -160,6 +167,61 @@ def test_stale_write_is_rejected_by_the_guarded_update(
         events = fresh.scalars(select(AuditEvent).where(AuditEvent.entity_id == "rfnd_001")).all()
         assert [e.reason for e in events] == ["B approved first"]
         assert _audit_count(fresh) == before_count + 1
+
+
+def test_guard_rejects_a_stale_snapshot_even_when_the_new_status_also_allows_the_action(
+    factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Session A snapshots `pending`; session B escalates and commits; A then rejects.
+
+    `escalated` is itself a legal source for reject, so a guard on "any allowed status" would
+    let A through and record `pending -> rejected` while the real transition was
+    `escalated -> rejected`. The guard must match the exact observed status instead.
+    Same scope caveat as above: two real sessions, no locking or threads under load.
+    """
+    real_snapshot: Callable[[RefundCase], dict[str, object]] = refund_service.refund_snapshot
+    interleaved = {"done": False}
+
+    def snapshot_then_let_b_escalate(refund: RefundCase) -> dict[str, object]:
+        result = real_snapshot(refund)
+        if not interleaved["done"]:
+            interleaved["done"] = True
+            with factory() as session_b:
+                refund_service.perform_refund_action(
+                    session_b, SAM, refund.id, RefundAction.ESCALATE, "B escalated first"
+                )
+        return result
+
+    monkeypatch.setattr(refund_service, "refund_snapshot", snapshot_then_let_b_escalate)
+
+    with factory() as session_a:
+        before_count = _audit_count(session_a)
+        with pytest.raises(InvalidStateTransitionError) as excinfo:
+            refund_service.perform_refund_action(
+                session_a, OLIVIA, "rfnd_001", RefundAction.REJECT, "A rejects a stale row"
+            )
+        assert excinfo.value.details["current_status"] == "escalated"
+        assert excinfo.value.details["action"] == "reject"
+
+    with factory() as fresh:
+        stored = fresh.get(RefundCase, "rfnd_001")
+        assert stored is not None
+        assert stored.refund_status is RefundStatus.ESCALATED
+        assert stored.last_action_reason == "B escalated first"
+        assert _transitions(fresh, "rfnd_001") == [("pending", "escalated")]
+        assert _audit_count(fresh) == before_count + 1
+
+    # A retry against the current row now records the true transition.
+    monkeypatch.setattr(refund_service, "refund_snapshot", real_snapshot)
+    with factory() as session_a:
+        refund_service.perform_refund_action(
+            session_a, OLIVIA, "rfnd_001", RefundAction.REJECT, "A rejects the current row"
+        )
+    with factory() as fresh:
+        assert _transitions(fresh, "rfnd_001") == [
+            ("pending", "escalated"),
+            ("escalated", "rejected"),
+        ]
 
 
 @pytest.mark.parametrize(

@@ -4,7 +4,7 @@ Nothing is persisted unless every step succeeds; a failure at any point leaves t
 and the audit table untouched.
 """
 
-from datetime import datetime, timezone
+from dataclasses import dataclass
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -29,38 +29,59 @@ from app.policy import (
     RefundAction,
     refund_action_denial,
 )
+from app.timeutil import utcnow
 
-ALLOWED_FROM: dict[RefundAction, frozenset[RefundStatus]] = {
-    RefundAction.APPROVE: frozenset({RefundStatus.PENDING, RefundStatus.ESCALATED}),
-    RefundAction.REJECT: frozenset({RefundStatus.PENDING, RefundStatus.ESCALATED}),
-    RefundAction.ESCALATE: frozenset({RefundStatus.PENDING}),
+
+@dataclass(frozen=True)
+class Transition:
+    allowed_from: frozenset[RefundStatus]
+    target: RefundStatus
+    audit_action: AuditAction
+
+
+_DECIDABLE = frozenset({RefundStatus.PENDING, RefundStatus.ESCALATED})
+
+TRANSITIONS: dict[RefundAction, Transition] = {
+    RefundAction.APPROVE: Transition(
+        allowed_from=_DECIDABLE,
+        target=RefundStatus.APPROVED,
+        audit_action=AuditAction.REFUND_APPROVED,
+    ),
+    RefundAction.REJECT: Transition(
+        allowed_from=_DECIDABLE,
+        target=RefundStatus.REJECTED,
+        audit_action=AuditAction.REFUND_REJECTED,
+    ),
+    RefundAction.ESCALATE: Transition(
+        allowed_from=frozenset({RefundStatus.PENDING}),
+        target=RefundStatus.ESCALATED,
+        audit_action=AuditAction.REFUND_ESCALATED,
+    ),
 }
 
-TARGET_STATUS: dict[RefundAction, RefundStatus] = {
-    RefundAction.APPROVE: RefundStatus.APPROVED,
-    RefundAction.REJECT: RefundStatus.REJECTED,
-    RefundAction.ESCALATE: RefundStatus.ESCALATED,
+DENIAL_ERRORS: dict[str, tuple[type[AppError], str]] = {
+    APPROVAL_LIMIT_EXCEEDED: (
+        ApprovalLimitExceededError,
+        "Refund amount exceeds this role's approval limit.",
+    ),
+    ACTION_NOT_PERMITTED_FOR_ROLE: (
+        ActionNotPermittedForRoleError,
+        "This role may not perform this refund action.",
+    ),
+    UNSUPPORTED_CURRENCY: (
+        UnsupportedCurrencyError,
+        "Only USD refunds are supported.",
+    ),
 }
-
-AUDIT_ACTION: dict[RefundAction, AuditAction] = {
-    RefundAction.APPROVE: AuditAction.REFUND_APPROVED,
-    RefundAction.REJECT: AuditAction.REFUND_REJECTED,
-    RefundAction.ESCALATE: AuditAction.REFUND_ESCALATED,
-}
-
-DENIAL_ERRORS: dict[str, type[AppError]] = {
-    APPROVAL_LIMIT_EXCEEDED: ApprovalLimitExceededError,
-    ACTION_NOT_PERMITTED_FOR_ROLE: ActionNotPermittedForRoleError,
-    UNSUPPORTED_CURRENCY: UnsupportedCurrencyError,
-}
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _denial_for(actor: CurrentUser, action: RefundAction, refund: RefundCase) -> Denial | None:
     return refund_action_denial(actor.role, action, refund.amount_cents, refund.currency)
+
+
+def _denial_error(denial: Denial) -> AppError:
+    error_type, message = DENIAL_ERRORS[denial.code]
+    return error_type(message, details=denial.details)
 
 
 def _transition_error(
@@ -71,7 +92,7 @@ def _transition_error(
         details={
             "action": action.value,
             "current_status": current_status.value,
-            "allowed_from": sorted(status.value for status in ALLOWED_FROM[action]),
+            "allowed_from": sorted(s.value for s in TRANSITIONS[action].allowed_from),
         },
     )
 
@@ -82,7 +103,7 @@ def allowed_actions(actor: CurrentUser, refund: RefundCase) -> list[RefundAction
         action
         for action in RefundAction
         if _denial_for(actor, action, refund) is None
-        and refund.refund_status in ALLOWED_FROM[action]
+        and refund.refund_status in TRANSITIONS[action].allowed_from
     ]
 
 
@@ -99,30 +120,33 @@ def perform_refund_action(
 
     denial = _denial_for(actor, action, refund)
     if denial is not None:
-        raise DENIAL_ERRORS[denial.code](denial.message, details=denial.details)
+        raise _denial_error(denial)
 
-    if refund.refund_status not in ALLOWED_FROM[action]:
+    transition = TRANSITIONS[action]
+    observed_status = refund.refund_status
+    if observed_status not in transition.allowed_from:
         raise _transition_error(
             action,
-            refund.refund_status,
-            f"Cannot {action.value} a refund that is {refund.refund_status.value}.",
+            observed_status,
+            f"Cannot {action.value} a refund that is {observed_status.value}.",
         )
 
     before_state = refund_snapshot(refund)
-    now = _utcnow()
+    now = utcnow()
     try:
-        # The status predicate makes the transition check atomic at the database: a
-        # concurrent action that already moved this refund leaves zero rows to update.
+        # The UPDATE only applies if the row still has exactly the status captured in
+        # `before_state`, so the audit event always records the true immediate transition.
+        # Any concurrent change, even to another allowed status, leaves zero rows updated.
         result = session.execute(
             update(RefundCase)
             .where(
                 RefundCase.id == refund.id,
-                RefundCase.refund_status.in_(ALLOWED_FROM[action]),
+                RefundCase.refund_status == observed_status,
             )
             .values(
-                refund_status=TARGET_STATUS[action],
+                refund_status=transition.target,
                 updated_at=now,
-                last_action=AUDIT_ACTION[action],
+                last_action=transition.audit_action,
                 last_action_by=actor.display_name,
                 last_action_reason=reason,
                 last_action_at=now,
@@ -133,13 +157,13 @@ def perform_refund_action(
             raise _transition_error(
                 action,
                 refund.refund_status,
-                f"Refund changed to {refund.refund_status.value} before this {action.value} "
-                "could be applied.",
+                f"Refund changed from {observed_status.value} to {refund.refund_status.value} "
+                f"before this {action.value} could be applied.",
             )
         record_refund_event(
             session,
             actor=actor,
-            action=AUDIT_ACTION[action],
+            action=transition.audit_action,
             refund=refund,
             before_state=before_state,
             reason=reason,
