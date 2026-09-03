@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, NETWORK_ERROR } from '../api/client.ts'
 
 export type QueryState<T> =
@@ -22,29 +22,40 @@ export interface QueryOptions<T> {
 }
 
 /**
- * Minimal fetch-on-change hook. The fetcher receives an AbortSignal that is aborted when the
- * dependencies change or the component unmounts, so late responses never overwrite fresh state.
+ * Minimal fetch-on-change hook. `key` identifies the request (identity, filters, ids…); when it
+ * changes, the in-flight request is aborted via the AbortSignal handed to the fetcher so late
+ * responses never overwrite fresh state. The latest `fetcher` is always used.
  */
 export function useQuery<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
-  deps: DependencyList,
+  key: string,
   options: QueryOptions<T> = {},
 ): QueryResult<T> {
   const { isEmpty, enabled = true } = options
   const [state, setState] = useState<QueryState<T>>({ status: 'loading', data: undefined })
   const [version, setVersion] = useState(0)
   const latestData = useRef<T | undefined>(undefined)
+  const fetcherRef = useRef(fetcher)
+  const isEmptyRef = useRef(isEmpty)
+  // Declared before the fetch effect so React runs it first on every commit.
+  useEffect(() => {
+    fetcherRef.current = fetcher
+    isEmptyRef.current = isEmpty
+  })
 
   useEffect(() => {
     if (!enabled) return
     const controller = new AbortController()
     setState({ status: 'loading', data: latestData.current })
 
-    fetcher(controller.signal)
+    fetcherRef
+      .current(controller.signal)
       .then((data) => {
         if (controller.signal.aborted) return
         latestData.current = data
-        setState(isEmpty?.(data) ? { status: 'empty', data } : { status: 'success', data })
+        setState(
+          isEmptyRef.current?.(data) ? { status: 'empty', data } : { status: 'success', data },
+        )
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -56,17 +67,14 @@ export function useQuery<T>(
       })
 
     return () => controller.abort()
-  }, [...deps, version, enabled])
+  }, [key, version, enabled])
 
   const reload = useCallback(() => setVersion((v) => v + 1), [])
-  const setData = useCallback(
-    (updater: (previous: T | undefined) => T) => {
-      const data = updater(latestData.current)
-      latestData.current = data
-      setState(isEmpty?.(data) ? { status: 'empty', data } : { status: 'success', data })
-    },
-    [isEmpty],
-  )
+  const setData = useCallback((updater: (previous: T | undefined) => T) => {
+    const data = updater(latestData.current)
+    latestData.current = data
+    setState(isEmptyRef.current?.(data) ? { status: 'empty', data } : { status: 'success', data })
+  }, [])
 
   return { state, reload, setData }
 }
