@@ -30,7 +30,7 @@ implemented yet; the frontend is still a placeholder page showing backend health
 
 ## Prerequisites
 
-- Python 3.10 or newer
+- Python 3.10 through 3.13 (the pinned Pydantic release does not support Python 3.14)
 - Node.js 22 (`nvm use` reads `.nvmrc`; Node 20.18 is too old for Vite 8)
 
 ## Local commands
@@ -39,7 +39,7 @@ implemented yet; the frontend is still a placeholder page showing backend health
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.13 -m venv .venv   # or another installed Python from 3.10 through 3.13
 ./.venv/bin/pip install -r requirements-dev.txt   # runtime deps only: requirements.txt
 ./.venv/bin/uvicorn app.main:app --reload --port 8000   # run on http://localhost:8000
 ./.venv/bin/pytest                                 # tests
