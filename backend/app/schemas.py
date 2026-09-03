@@ -40,6 +40,7 @@ class PolicyOut(ApiModel):
     approval_limit_cents: int | None
     can_edit_staging_flags: bool
     can_edit_production_flags: bool
+    can_escalate_refunds: bool
 
 
 class SessionOut(ApiModel):

@@ -57,6 +57,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": 50_000,
                 "can_edit_staging_flags": False,
                 "can_edit_production_flags": False,
+                "can_escalate_refunds": True,
             },
         ),
         (
@@ -66,6 +67,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": 500_000,
                 "can_edit_staging_flags": True,
                 "can_edit_production_flags": False,
+                "can_escalate_refunds": True,
             },
         ),
         (
@@ -75,6 +77,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": None,
                 "can_edit_staging_flags": True,
                 "can_edit_production_flags": True,
+                "can_escalate_refunds": False,
             },
         ),
     ],

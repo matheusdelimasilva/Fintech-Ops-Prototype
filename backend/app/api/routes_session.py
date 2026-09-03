@@ -22,6 +22,7 @@ def read_session(actor: Actor, session: DbSession) -> SessionOut:
             approval_limit_cents=policy.approval_limit_cents,
             can_edit_staging_flags=policy.can_edit_staging_flags,
             can_edit_production_flags=policy.can_edit_production_flags,
+            can_escalate_refunds=policy.can_escalate_refunds,
         ),
         available_users=[
             DemoUserOut.model_validate(user) for user in repositories.list_demo_users(session)

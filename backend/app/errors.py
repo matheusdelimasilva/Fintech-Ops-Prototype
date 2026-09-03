@@ -36,6 +36,14 @@ class AuthorizationError(AppError):
     code = "FORBIDDEN"
 
 
+class ApprovalLimitExceededError(AuthorizationError):
+    code = "APPROVAL_LIMIT_EXCEEDED"
+
+
+class ActionNotPermittedForRoleError(AuthorizationError):
+    code = "ACTION_NOT_PERMITTED_FOR_ROLE"
+
+
 class NotFoundError(AppError):
     status_code = 404
     code = "NOT_FOUND"
@@ -51,6 +59,10 @@ class InvalidStateTransitionError(AppError):
     code = "INVALID_STATE_TRANSITION"
 
 
+class UnsupportedCurrencyError(ValidationError):
+    code = "UNSUPPORTED_CURRENCY"
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
@@ -62,6 +74,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             "Request validation failed.",
             details={"errors": [_serialize_pydantic_error(e) for e in exc.errors()]},
         )
+        return JSONResponse(status_code=error.status_code, content=error.to_payload())
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected(_: Request, __: Exception) -> JSONResponse:
+        error = AppError("An unexpected error occurred.")
         return JSONResponse(status_code=error.status_code, content=error.to_payload())
 
 
