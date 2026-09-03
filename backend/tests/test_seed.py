@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, inspect, select
 
 from app import db, seed
+from app.audit import refund_snapshot
 from app.main import app
 from app.models import AuditEvent, DemoUser, FeatureFlag, RefundCase, RefundStatus
 
@@ -48,6 +49,23 @@ def test_seed_contains_approval_threshold_fixtures(seeded_engine: Engine) -> Non
     assert min(pending_amounts) < 50_000
     assert max(pending_amounts) > 500_001
     assert statuses == set(RefundStatus)
+
+
+def test_seeded_audit_snapshots_match_the_live_snapshot_shape(seeded_engine: Engine) -> None:
+    with db.make_session_factory(seeded_engine)() as session:
+        events = session.scalars(select(AuditEvent).order_by(AuditEvent.id)).all()
+        refunds = {r.id: r for r in session.scalars(select(RefundCase)).all()}
+
+        assert len(events) == 3
+        for event in events:
+            refund = refunds[event.entity_id]
+            live = refund_snapshot(refund)
+            assert event.after_state == live
+            assert set(event.before_state) == set(live)
+            assert event.before_state["refund_status"] == "pending"
+            assert event.before_state["last_action"] is None
+            assert event.before_state["last_action_at"] is None
+            assert event.after_state["last_action_reason"] == event.reason
 
 
 def test_app_startup_seeds_an_empty_database(

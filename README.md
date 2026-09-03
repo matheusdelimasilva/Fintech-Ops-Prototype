@@ -20,10 +20,12 @@ All identities and business data are synthetic.
 
 ## Current state
 
-Backend foundation: SQLite persistence (SQLAlchemy), deterministic synthetic
-seed data, server-side demo identity resolution, and read-only JSON endpoints
-for the session, refunds, feature flags, and audit events. Refund/feature-flag
-mutations, RBAC enforcement on writes, and the frontend modules are not
+Backend: SQLite persistence (SQLAlchemy), deterministic synthetic seed data,
+server-side demo identity resolution, read-only JSON endpoints for the session,
+refunds, feature flags, and audit events, and the refund workflow —
+approve / reject / escalate with server-enforced approval limits, required
+reasons, state transitions, and an audit event written in the same transaction
+as the refund. Feature-flag mutations and the frontend modules are not
 implemented yet; the frontend is still a placeholder page showing backend health.
 
 ## Prerequisites
@@ -60,7 +62,22 @@ curl -H 'X-Demo-User-Id: user_olivia_ops' http://localhost:8000/api/session
 curl -H 'X-Demo-User-Id: user_olivia_ops' 'http://localhost:8000/api/refunds?status=pending'
 ```
 
+Refund actions are `POST /api/refunds/{id}/approve|reject|escalate` with a JSON
+body `{"reason": "..."}` (non-blank, at most 1000 characters after trimming).
+The response is the updated refund; its `allowed_actions` field is a UI hint
+computed for the calling user, and every action is re-authorized on the server
+regardless of it. Example — Sam (`$500` limit) attempting a `$500.01` refund:
+
+```bash
+curl -X POST -H 'X-Demo-User-Id: user_sam_support' -H 'Content-Type: application/json' \
+  -d '{"reason": "Duplicate charge confirmed"}' http://localhost:8000/api/refunds/rfnd_003/approve
+# 403 {"error": {"code": "APPROVAL_LIMIT_EXCEEDED", ..., "details": {"amount_cents": 50001, "approval_limit_cents": 50000, ...}}}
+```
+
 Errors use a stable envelope: `{"error": {"code": "...", "message": "...", "details": {}}}`.
+Codes in use: `MISSING_IDENTITY`, `UNKNOWN_IDENTITY` (401); `APPROVAL_LIMIT_EXCEEDED`,
+`ACTION_NOT_PERMITTED_FOR_ROLE` (403); `NOT_FOUND` (404); `INVALID_STATE_TRANSITION`
+(409); `VALIDATION_ERROR`, `UNSUPPORTED_CURRENCY` (422); `INTERNAL_ERROR` (500).
 
 ### Frontend (`frontend/`)
 

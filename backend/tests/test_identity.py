@@ -1,17 +1,30 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.main import app
 from tests.conftest import AVERY, OLIVIA, SAM
 
-PROTECTED_READ_ROUTES = [
-    "/api/session",
-    "/api/refunds",
-    "/api/refunds/rfnd_001",
-    "/api/feature-flags",
-    "/api/feature-flags/flag_bulk_export_staging",
-    "/api/audit-events",
-    "/api/audit-events/evt_seed_001",
-]
+PATH_PARAMS = {
+    "{refund_id}": "rfnd_001",
+    "{flag_id}": "flag_bulk_export_staging",
+    "{event_id}": "evt_seed_001",
+}
+
+
+def _concrete(path: str) -> str:
+    for placeholder, value in PATH_PARAMS.items():
+        path = path.replace(placeholder, value)
+    assert "{" not in path, f"unmapped path parameter in {path}"
+    return path
+
+
+# Derived from the OpenAPI schema so a route added without the identity dependency fails here.
+EVERY_API_OPERATION = sorted(
+    (method.upper(), _concrete(path))
+    for path, operations in app.openapi()["paths"].items()
+    if path.startswith("/api/")
+    for method in operations
+)
 
 
 def test_health_is_unauthenticated(client: TestClient) -> None:
@@ -39,9 +52,16 @@ def test_session_with_unknown_user_is_401_unknown_identity(client: TestClient) -
     assert body["error"]["details"] == {"demo_user_id": "user_mallory"}
 
 
-@pytest.mark.parametrize("path", PROTECTED_READ_ROUTES)
-def test_every_api_read_route_requires_identity(client: TestClient, path: str) -> None:
-    response = client.get(path)
+def test_schema_lists_the_expected_api_operations() -> None:
+    assert len(EVERY_API_OPERATION) == 10
+    assert ("POST", "/api/refunds/rfnd_001/approve") in EVERY_API_OPERATION
+
+
+@pytest.mark.parametrize(("method", "path"), EVERY_API_OPERATION)
+def test_every_api_operation_in_the_schema_requires_identity(
+    client: TestClient, method: str, path: str
+) -> None:
+    response = client.request(method, path, json={"reason": "valid reason"})
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "MISSING_IDENTITY"
@@ -57,6 +77,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": 50_000,
                 "can_edit_staging_flags": False,
                 "can_edit_production_flags": False,
+                "can_escalate_refunds": True,
             },
         ),
         (
@@ -66,6 +87,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": 500_000,
                 "can_edit_staging_flags": True,
                 "can_edit_production_flags": False,
+                "can_escalate_refunds": True,
             },
         ),
         (
@@ -75,6 +97,7 @@ def test_every_api_read_route_requires_identity(client: TestClient, path: str) -
                 "approval_limit_cents": None,
                 "can_edit_staging_flags": True,
                 "can_edit_production_flags": True,
+                "can_escalate_refunds": False,
             },
         ),
     ],
