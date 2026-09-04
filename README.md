@@ -30,15 +30,19 @@ permissions, mandatory production confirmation, and the same atomic audit
 write.
 
 Frontend: application shell with hash navigation (`#/refunds`,
-`#/refunds/<id>`, `#/feature-flags`, `#/feature-flags/<id>`, `#/audit`), a
+`#/refunds/<id>`, `#/feature-flags`, `#/feature-flags/<id>`, `#/audit`,
+`#/audit?entity_type=…&entity_id=…&actor=…&action=…`), a
 demo-user switcher backed by `GET /api/session`, the Refund Operations module
 — server-filtered queue (search, status, risk), detail view, approve / reject /
 escalate forms with required reasons, buttons driven by the server's
 `allowed_actions`, and the refund's audit trail with changed-field diffs — and
 the Feature Flags module — environment-filtered list, detail, an edit form
 shown only when the server reports `can_edit`, a production confirmation step
-when the server reports `requires_confirmation`, and the flag's audit trail.
-The standalone Audit Trail page is a placeholder.
+when the server reports `requires_confirmation`, and the flag's audit trail —
+and the Audit Trail page: every event newest first with server-side filters
+for entity type, entity ID, actor, and action carried in the URL, each event
+linking back to its refund or flag, and each detail panel linking into its
+filtered trail. The audit API is read-only; there is no pagination.
 
 ## Prerequisites
 
