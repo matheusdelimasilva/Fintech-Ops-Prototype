@@ -35,10 +35,14 @@ class FlagChanges:
     def __post_init__(self) -> None:
         if self.enabled is None and self.rollout_percent is None:
             raise ValueError("FlagChanges must set at least one field")
-        if self.rollout_percent is not None and not (
-            ROLLOUT_MIN <= self.rollout_percent <= ROLLOUT_MAX
-        ):
-            raise ValueError("rollout_percent must be between 0 and 100")
+        if self.enabled is not None and type(self.enabled) is not bool:
+            raise TypeError("enabled must be a bool")
+        if self.rollout_percent is not None:
+            # `bool` is an `int` subclass; `True` is not a rollout percentage.
+            if type(self.rollout_percent) is not int:
+                raise TypeError("rollout_percent must be an int")
+            if not ROLLOUT_MIN <= self.rollout_percent <= ROLLOUT_MAX:
+                raise ValueError("rollout_percent must be between 0 and 100")
 
 
 def can_edit(actor: CurrentUser, flag: FeatureFlag) -> bool:

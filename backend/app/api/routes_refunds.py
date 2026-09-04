@@ -13,10 +13,25 @@ router = APIRouter(prefix="/api/refunds", tags=["refunds"])
 
 
 def _refund_out(actor: CurrentUser, refund: RefundCase) -> RefundOut:
-    columns = {
-        name: getattr(refund, name) for name in RefundOut.model_fields if name != "allowed_actions"
-    }
-    return RefundOut(**columns, allowed_actions=refund_service.allowed_actions(actor, refund))
+    return RefundOut(
+        id=refund.id,
+        customer_name=refund.customer_name,
+        customer_reference=refund.customer_reference,
+        transaction_reference=refund.transaction_reference,
+        amount_cents=refund.amount_cents,
+        currency=refund.currency,
+        payment_status=refund.payment_status,
+        refund_status=refund.refund_status,
+        risk_level=refund.risk_level,
+        reason_code=refund.reason_code,
+        created_at=refund.created_at,
+        updated_at=refund.updated_at,
+        last_action=refund.last_action,
+        last_action_by=refund.last_action_by,
+        last_action_reason=refund.last_action_reason,
+        last_action_at=refund.last_action_at,
+        allowed_actions=refund_service.allowed_actions(actor, refund),
+    )
 
 
 @router.get("", response_model=list[RefundOut])
