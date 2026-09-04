@@ -1,3 +1,4 @@
+import { AuditTrailPage } from './audit/AuditTrailPage.tsx'
 import { FeatureFlagsPage } from './featureFlags/FeatureFlagsPage.tsx'
 import { UserSwitcher } from './identity/UserSwitcher.tsx'
 import { useIdentity } from './identity/context.ts'
@@ -9,15 +10,6 @@ const NAV_ITEMS = [
   { page: 'feature-flags', hash: '#/feature-flags', label: 'Feature Flags' },
   { page: 'audit', hash: '#/audit', label: 'Audit Trail' },
 ] as const
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section className="panel" aria-labelledby="page-heading">
-      <h1 id="page-heading">{title}</h1>
-      <p className="muted">Not implemented in this checkpoint.</p>
-    </section>
-  )
-}
 
 function App() {
   const route = useHashRoute()
@@ -62,7 +54,7 @@ function App() {
       <main key={userId} className="shell app-main">
         {route.page === 'refunds' && <RefundsPage selectedId={route.refundId} />}
         {route.page === 'feature-flags' && <FeatureFlagsPage selectedId={route.flagId} />}
-        {route.page === 'audit' && <PlaceholderPage title="Audit Trail" />}
+        {route.page === 'audit' && <AuditTrailPage filters={route.filters} />}
       </main>
     </>
   )

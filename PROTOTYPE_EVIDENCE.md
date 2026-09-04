@@ -22,8 +22,9 @@ end times explicitly.
 | 2 | Backend foundation: persistence, seed, demo identity, read-only API | [#2](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/2) | Merged |
 | 3 | Refund mutations, RBAC enforcement, atomic audit writes | [#4](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/4) | Merged |
 | 4 | Frontend shell + Refund Operations UI | [#5](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/5) | Merged |
-| 5 | Feature Flags end-to-end (reuse proof) | [#6](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/6) | In review |
-| 6 | Final verification and handoff | — | Not started |
+| 5 | Feature Flags end-to-end (reuse proof) | [#6](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/6), review fixes [#8](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/8), visual polish [#7](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/7) | Merged |
+| 6 | Standalone Audit Trail page | [#9](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/9) | In review |
+| 7 | Final verification and handoff | — | Not started |
 
 ## Checkpoint 1 — Runnable skeleton (PR #1)
 
@@ -889,3 +890,145 @@ Activity, compact empty state, and a timeline treatment for audit events.
 clean, pytest 153. Playwright-over-CDP smoke at 1600px and 900px as Sam and
 Olivia (pending, escalated, rejected refunds; reject form open) reported no
 console errors.
+
+## Checkpoint 6 — Standalone Audit Trail page (PR #9)
+
+Branch `devin/1788486803-audit-trail-page`, cut from `main` at the #6 merge
+and fast-forwarded to the merge of #7 and #8 (`17fb015`) before this section
+was written. Frontend-only checkpoint: no backend, schema, or seed change; the
+read-only `GET /api/audit-events` endpoint and its four filters already
+existed.
+
+### Planning
+
+One "grill me" round (eight questions); the owner accepted the design with
+amendments, all of which are implemented:
+
+- **Filters live in the hash** (`#/audit?entity_type=…&entity_id=…&actor=…&action=…`)
+  because a filtered trail is a destination people share and revisit.
+  `auditHash()` writes keys in a fixed order (`entity_type`, `entity_id`,
+  `actor`, `action`), omits empty values, and encodes through
+  `URLSearchParams`; `parseHash` round-trips it (unit-tested).
+- **Replace navigation** for filter edits so Back does not step through every
+  keystroke. `history.replaceState()` does not fire `hashchange`, so
+  `replaceHash()` dispatches an explicit `app:route-replaced` event that the
+  router listens to alongside `hashchange` (owner's Q2 amendment).
+- **Invalid enum values are dropped at the routing boundary** (owner's Q4
+  reversal of the agent's proposal to forward them): `entity_type=bogus` or
+  `action=nope` in a hand-edited URL parse to "no filter" instead of producing
+  a blank `<select>` and a persistent `422` on every reload. Free-text
+  `entity_id` and `actor` pass through trimmed. The backend still rejects
+  invalid enum values when called directly (see the `curl` table).
+- **`AuditEventList.showEntity`** adds an "Entity: Refund · rfnd_003" line
+  linking to the record via a pure `entityHash(type, id)`; unknown future
+  entity types render as plain text, not a broken link (Q3). The embedded
+  refund/flag panels do not pass the prop, so their presentation is unchanged.
+- **Actor select** is built from the session roster (`available_users`) — no
+  hard-coded ids and no second `/api/session` call. If the URL names an actor
+  that is not in the loaded roster, it is shown as a temporary
+  "`<id>` (not in roster)" option so the active filter is visible (Q7).
+- **Live region announces the settled count** ("12 events" / "1 event") and
+  nothing while loading; Refresh is disabled while a request is in flight (Q6).
+- **No pagination.** The endpoint returns every matching event; recorded below
+  as a scalability limitation rather than treated as production-ready (Q5).
+
+### Delivered
+
+- `frontend/src/router.ts`: `Route` gains `{ page: 'audit', filters }`;
+  `parseAuditFilters`, `auditHash`, `entityHash`, `replaceHash`;
+  `useHashRoute` re-parses on `hashchange` and on the custom replace event.
+- `frontend/src/api/types.ts`: `AuditListFilters` (the query shape of
+  `GET /api/audit-events`). `frontend/src/api/client.ts`:
+  `listAuditEvents(filters, signal)` replaces the two-argument form; both
+  detail panels pass `{ entity_type, entity_id }`.
+- `frontend/src/audit/AuditTrailPage.tsx`: filter row (entity type, entity ID
+  with the same 300 ms debounce as refund search, actor, action, Clear
+  filters), settled-count `role="status"`, Refresh, `LoadingState` /
+  `ErrorNotice` with retry / `EmptyState` ("No events match the current
+  filters" vs "No audit events yet"), and the shared `AuditEventList` with
+  `showEntity`. Filter edits go through `replaceHash(auditHash(next))`; the
+  page has no filter state of its own beyond the debounced entity-ID draft.
+- `frontend/src/audit/AuditEventList.tsx`: optional `showEntity` → `EntityRef`.
+- `frontend/src/shared/format.ts`: `ENTITY_TYPE_LABELS`.
+- `frontend/src/refunds/RefundDetailPanel.tsx`,
+  `frontend/src/featureFlags/FeatureFlagDetailPanel.tsx`: "Open in Audit
+  Trail" link next to the embedded audit heading, prefiltered to that record.
+- `frontend/src/App.tsx`: placeholder removed. `styles.css`: `.section-heading`
+  and `.audit-toolbar-status` only.
+- Tests: `router.test.ts` grows from 6 to 21 cases (all four filters, invalid
+  enum dropping while keeping free text, blank free text dropped, fixed key
+  order, empty omission, encoding of `a b&c`, round trip, known/unknown
+  `entityHash`).
+
+Reuse check: the page adds no new fetch, error, loading, empty, formatting, or
+audit-rendering code; it composes `useApiClient`, `useQuery`, `LoadingState`,
+`EmptyState`, `ErrorNotice`, `AuditEventList`, and the formatters. The one
+remaining duplication in the codebase is the ~30-line mutation/refresh
+orchestration in the two detail panels noted at Checkpoint 5; this checkpoint
+does not add a third copy because the Audit Trail has no mutations.
+
+### Commands run and results
+
+Run at `7f7906b` after fast-forwarding onto `17fb015`:
+
+| Command | Result |
+|---|---|
+| `backend: ./.venv/bin/ruff check .` | All checks passed |
+| `backend: ./.venv/bin/ruff format --check .` | 30 files already formatted |
+| `backend: ./.venv/bin/pytest` | 234 passed (unchanged — no backend change) |
+| `frontend: npx tsc -b` | clean |
+| `frontend: npm run lint` (oxlint) | 0 warnings, 0 errors (an initial `react/set-state-in-effect` warning on the entity-ID draft sync was resolved by using the render-time "adjust state when a prop changes" pattern instead of an effect) |
+| `frontend: npm test` (vitest) | 7 files, 76 passed (up from 68; +15 router cases, −7 replaced) |
+| `frontend: npm run build` | built, `index-*.js` 233 kB / 70.5 kB gzip |
+| `git diff --check` | clean |
+
+### Direct HTTP evidence (fresh seed on a scratch DB, `curl` against `uvicorn`)
+
+Avery first `PATCH`ed `flag_bulk_export_staging` (`rollout_percent: 42`) to
+put a `feature_flag.updated` event next to the three seeded refund events.
+All reads as Sam (`user_sam_support`, read-only role):
+
+| Query | Result |
+|---|---|
+| `GET /api/audit-events` | 200 · 4 events, newest first: `feature_flag.updated`, `refund.escalated`, `refund.rejected`, `refund.approved` |
+| `?entity_type=refund` | 200 · 3 refund events |
+| `?entity_type=feature_flag` | 200 · 1 event |
+| `?actor=user_avery_admin` | 200 · 1 event |
+| `?action=refund.escalated` | 200 · 1 event |
+| `?entity_type=feature_flag&entity_id=flag_bulk_export_staging` | 200 · 1 event |
+| `?entity_type=bogus` | **422 `VALIDATION_ERROR`**, `loc: ["query","entity_type"]` — the backend still rejects what the router now drops client-side |
+| `?action=nope` | **422 `VALIDATION_ERROR`**, `loc: ["query","action"]` |
+| `?actor=nobody` | 200 · 0 events (free text is not validated against the roster) |
+| no `X-Demo-User-Id` | **401 `MISSING_IDENTITY`** |
+
+### Browser verification
+
+Owner's Q8 amendment for this checkpoint: browser verification is part of the
+checkpoint, not deferred. The nine-item list (direct filtered URL + reload;
+filter edits not polluting history; both "Open in Audit Trail" links; all four
+filters and Clear; invalid enum normalization; empty and error states; Refresh
+after an action in another tab; entity links back to the correct detail page;
+clean console) is run by the agent's testing harness after the PR opens and
+recorded in the subsection below. The refund and feature-flag browser passes
+from Checkpoints 4 and 5 remain owner-owned as previously agreed.
+
+### Limitations at this checkpoint
+
+- **Unbounded listing.** `GET /api/audit-events` has no `limit`/cursor; the
+  page renders every matching event. Fine for the synthetic dataset (single
+  digits to a few dozen events), not a production posture — a real trail needs
+  server-side pagination and probably a date range filter.
+- `actor` is free text on the wire; the UI offers a roster select, but a URL
+  with an unknown id simply returns zero events rather than an error.
+- No `occurred_at` range filter, no full-text search over reasons, no export.
+- Component behaviour (filter controls, live region, links) has no automated
+  UI tests; the pure routing/serialization logic is unit-tested and the
+  rest is covered by the browser pass.
+- The audit trail is append-only through the application only: nothing
+  prevents direct SQLite edits, and there is no hash chain, WORM storage, or
+  external log shipping.
+
+### Remaining production work
+
+Unchanged from the README and Checkpoint 5, plus for the trail specifically:
+pagination, retention/archival policy, tamper-evident storage, and export.

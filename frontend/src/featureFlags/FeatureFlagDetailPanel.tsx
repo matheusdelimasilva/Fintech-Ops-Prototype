@@ -3,7 +3,7 @@ import { ApiError, toApiError } from '../api/client.ts'
 import type { AuditEvent, FeatureFlagPatch } from '../api/types.ts'
 import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
-import { featureFlagHash, navigate } from '../router.ts'
+import { auditHash, featureFlagHash, navigate } from '../router.ts'
 import { ErrorNotice } from '../shared/ErrorNotice.tsx'
 import { type RefreshStatus, describeRefresh } from '../shared/describeRefresh.ts'
 import { AUDIT_ACTION_LABELS, formatTimestamp } from '../shared/format.ts'
@@ -29,7 +29,7 @@ export function FeatureFlagDetailPanel({ flagId, reloadList, listStatus }: Props
   const client = useApiClient()
   const detail = useQuery((signal) => client.getFeatureFlag(flagId, signal), flagId)
   const audit = useQuery(
-    (signal) => client.listAuditEvents('feature_flag', flagId, signal),
+    (signal) => client.listAuditEvents({ entity_type: 'feature_flag', entity_id: flagId }, signal),
     flagId,
     { isEmpty: isEmptyList },
   )
@@ -165,7 +165,12 @@ export function FeatureFlagDetailPanel({ flagId, reloadList, listStatus }: Props
       </section>
 
       <section aria-labelledby="flag-audit-heading">
-        <h3 id="flag-audit-heading">Audit trail</h3>
+        <div className="section-heading">
+          <h3 id="flag-audit-heading">Audit trail</h3>
+          <a href={auditHash({ entity_type: 'feature_flag', entity_id: flagId })}>
+            Open in Audit Trail
+          </a>
+        </div>
         {audit.state.status === 'loading' && audit.state.data === undefined && (
           <LoadingState label="Loading audit events…" />
         )}

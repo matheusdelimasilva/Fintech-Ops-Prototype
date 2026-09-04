@@ -746,6 +746,28 @@ section + section,
   margin-bottom: 0.125rem;
 }
 
+.audit-toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.audit-toolbar-status .result-count {
+  margin: 0;
+}
+
+.section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.section-heading a {
+  font-size: var(--text-sm);
+}
+
 .result-count {
   margin: 0 0 0.375rem;
   font-size: var(--text-sm);

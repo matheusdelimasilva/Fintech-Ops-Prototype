@@ -3,7 +3,7 @@ import { ApiError, toApiError } from '../api/client.ts'
 import type { AuditEvent, RefundAction } from '../api/types.ts'
 import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
-import { navigate, refundHash } from '../router.ts'
+import { auditHash, navigate, refundHash } from '../router.ts'
 import { ErrorNotice } from '../shared/ErrorNotice.tsx'
 import { type RefreshStatus, describeRefresh } from '../shared/describeRefresh.ts'
 import {
@@ -34,7 +34,7 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
   const client = useApiClient()
   const detail = useQuery((signal) => client.getRefund(refundId, signal), refundId)
   const audit = useQuery(
-    (signal) => client.listAuditEvents('refund', refundId, signal),
+    (signal) => client.listAuditEvents({ entity_type: 'refund', entity_id: refundId }, signal),
     refundId,
     { isEmpty: isEmptyList },
   )
@@ -183,7 +183,10 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
       <RefundFacts refund={refund} />
 
       <section aria-labelledby="audit-heading">
-        <h3 id="audit-heading">Audit trail</h3>
+        <div className="section-heading">
+          <h3 id="audit-heading">Audit trail</h3>
+          <a href={auditHash({ entity_type: 'refund', entity_id: refundId })}>Open in Audit Trail</a>
+        </div>
         {audit.state.status === 'loading' && audit.state.data === undefined && (
           <LoadingState label="Loading audit events…" />
         )}

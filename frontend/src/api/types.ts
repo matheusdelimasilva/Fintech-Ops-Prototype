@@ -99,3 +99,11 @@ export interface RefundListFilters {
   status?: RefundStatus
   risk_level?: RiskLevel
 }
+
+/** Query parameters of `GET /api/audit-events`; `actor` is a demo user id. */
+export interface AuditListFilters {
+  entity_type?: EntityType
+  entity_id?: string
+  actor?: string
+  action?: AuditAction
+}

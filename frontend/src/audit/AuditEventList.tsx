@@ -1,6 +1,8 @@
 import type { AuditEvent } from '../api/types.ts'
+import { entityHash } from '../router.ts'
 import {
   AUDIT_ACTION_LABELS,
+  ENTITY_TYPE_LABELS,
   ROLE_LABELS,
   formatTimestamp,
   humanizeKey,
@@ -9,10 +11,23 @@ import { changedFields, formatSnapshotValue } from './changedFields.ts'
 
 interface Props {
   events: AuditEvent[]
+  /** Name and link each event's entity; off when the surrounding panel already is the entity. */
+  showEntity?: boolean
+}
+
+function EntityRef({ event }: { event: AuditEvent }) {
+  const label = `${ENTITY_TYPE_LABELS[event.entity_type] ?? event.entity_type} · ${event.entity_id}`
+  const hash = entityHash(event.entity_type, event.entity_id)
+  return (
+    <p className="audit-event-meta">
+      <span className="muted">Entity:</span>{' '}
+      {hash ? <a href={hash}>{label}</a> : <span>{label}</span>}
+    </p>
+  )
 }
 
 /** Domain-neutral audit rendering: newest first, changed fields up front, raw snapshots behind. */
-export function AuditEventList({ events }: Props) {
+export function AuditEventList({ events, showEntity = false }: Props) {
   const ordered = [...events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
   return (
     <ol className="audit-timeline" aria-label="Audit events, newest first">
@@ -24,6 +39,7 @@ export function AuditEventList({ events }: Props) {
               <strong>{AUDIT_ACTION_LABELS[event.action] ?? event.action}</strong>
               <time dateTime={event.occurred_at}>{formatTimestamp(event.occurred_at)}</time>
             </div>
+            {showEntity && <EntityRef event={event} />}
             <p className="audit-event-meta">
               {event.actor_display_name}{' '}
               <span className="muted">
