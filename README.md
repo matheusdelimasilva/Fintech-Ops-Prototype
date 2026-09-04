@@ -94,12 +94,14 @@ optionally `confirm_production` (boolean, default `false`). Types are strict:
 field is rejected rather than treated as omitted. Support agents cannot edit
 any flag, operations managers may edit staging only, and admins may edit
 staging and production; a production change is also refused unless
-`confirm_production` is exactly `true`. Authorization is checked before the
-confirmation, so an operations manager gets `403` on a production flag whether
-or not they confirm. A request whose values equal the flag's current values is
-`409 NO_CHANGE` and writes nothing. Each flag in the read responses carries
-server-computed `can_edit` and `requires_confirmation` hints for the calling
-user; PATCH re-checks both regardless. Example:
+`confirm_production` is exactly `true`. For a schema-valid body, authorization
+is checked before the confirmation, so an operations manager gets `403` on a
+production flag whether or not they confirm; a body that fails schema
+validation (for example `confirm_production: "true"`) is `422 VALIDATION_ERROR`
+for every caller before the service runs. A request whose values equal the
+flag's current values is `409 NO_CHANGE` and writes nothing. Each flag in the
+read responses carries server-computed `can_edit` and `requires_confirmation`
+hints for the calling user; PATCH re-checks both regardless. Example:
 
 ```bash
 curl -X PATCH -H 'X-Demo-User-Id: user_avery_admin' -H 'Content-Type: application/json' \

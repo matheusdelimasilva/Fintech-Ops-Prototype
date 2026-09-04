@@ -591,6 +591,10 @@ review branch. Decisions that shaped the implementation:
 - Authorization is checked **before** production confirmation; a missing
   confirmation for an authorized admin is `422 PRODUCTION_CONFIRMATION_REQUIRED`
   (a `ValidationError` subclass), never `403`. Staging ignores the flag.
+  Scope of that ordering (corrected after the PR #6 review, see below): it
+  holds for bodies that pass schema validation. FastAPI validates the body
+  before the route runs, so Olivia sending `confirm_production: "true"` to a
+  production flag gets the generic `422 VALIDATION_ERROR`, not `403`.
 - Pure `feature_flag_edit_denial(role, environment)` in `policy.py` reusing
   `ACTION_NOT_PERMITTED_FOR_ROLE`; service mirrors the refund shape (load →
   authorize → confirm → no-op check → guarded `UPDATE` → audit → one commit).
@@ -755,9 +759,12 @@ pure tests above; server behaviour by the API tests and the `curl` table.
 Suggested owner pass: Sam sees no **Edit flag** button on any flag; Olivia sees
 it on staging only; Avery sees it on both, with the red confirmation block and
 a disabled Confirm on production until the box is ticked; `101` in the rollout
-field shows the shared `422` notice; resubmitting current values shows "No
-changes to apply"; a successful save updates the list row, the detail, the
-banner, and the audit list without a reload.
+field shows the shared `422` notice; a successful save updates the list row,
+the detail, the banner, and the audit list without a reload. (An earlier
+version of this list said that resubmitting current values shows "No changes
+to apply"; that was wrong — the form disables Confirm when nothing changed, so
+`409 NO_CHANGE` is reachable only through a direct API call or a stale second
+tab, as in the `curl` table above.)
 
 ### Elapsed milestones
 
@@ -797,6 +804,58 @@ gates followed immediately after.
 - The audit trail is append-only through the application only: nothing
   prevents direct SQLite edits, and there is no hash chain, WORM storage, or
   external log shipping.
+
+### Post-merge review fixes (PR #7)
+
+Owner review of the merged PR #6 raised ten points; this follow-up branch was
+cut from the merged `main`. What changed, and what deliberately did not:
+
+- **Service-boundary types.** `FlagChanges` accepted `rollout_percent=12.5`
+  and `rollout_percent=True` when called directly (only the HTTP schema was
+  strict, and `bool` is an `int` subclass in Python). `__post_init__` now
+  raises `TypeError` unless `enabled` is literally a `bool` and
+  `rollout_percent` literally an `int`; a parametrized test covers float,
+  integral float, `True`, `"50"`, `1`, `0`, and `"true"`.
+- **Explicit response mappers.** `_flag_out()` no longer iterates
+  `FeatureFlagOut.model_fields` with an exclusion set for the computed hints;
+  it names every field. `_refund_out()` had the same pattern and was made
+  explicit too, so adding a response-only field can no longer fail at runtime
+  with `getattr`.
+- **Description column** added to the flag table (the plan required it).
+- **Honest refresh banner.** Both detail panels received the parent list /
+  queue *status* (not a boolean) and describe every follow-up refetch through
+  a pure `describeRefresh({label: status})`: `loading` → "refreshing …",
+  `success` / `empty` → "refreshed", `error` → "refresh failed", never folding
+  a failure into "refreshed". Four pure tests.
+- **Stale `409` reloads the parent too.** `reloadAll()` in both panels now
+  refetches the detail, its audit events, and the parent list / queue.
+- **Documentation corrections** (above and in the README): the
+  authorization-before-confirmation guarantee applies to schema-valid bodies;
+  `NO_CHANGE` is not reachable by resubmitting the UI form.
+- **Not done, on purpose.** The ~30-line mutation orchestration duplicated by
+  the two detail panels stays as is; the owner agreed a narrow shared hook is
+  warranted only if a third workflow appears.
+- **Browser and console verification** remain owned by the project owner
+  ("I will own it"); nothing about browser behaviour is claimed here.
+
+Commands and results:
+
+```bash
+cd backend
+./.venv/bin/ruff check .                # All checks passed
+./.venv/bin/ruff format --check .       # 31 files left unchanged
+./.venv/bin/pytest                      # 234 passed (227 before; +7)
+
+cd frontend && nvm use 22
+npm run lint                            # oxlint: clean
+npm test                                # vitest: 7 files, 68 tests passed (64 before; +4)
+npm run build                           # tsc -b && vite build: built
+
+git diff --check                        # clean
+```
+
+Elapsed: PR #6 merged at 2026-09-04 01:36 UTC; the backend and frontend
+commits landed at 01:43 and 01:46 UTC, docs immediately after.
 
 ### Remaining production work
 
