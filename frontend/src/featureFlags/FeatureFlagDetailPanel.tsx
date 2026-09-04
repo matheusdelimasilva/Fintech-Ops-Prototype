@@ -5,6 +5,7 @@ import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
 import { featureFlagHash, navigate } from '../router.ts'
 import { ErrorNotice } from '../shared/ErrorNotice.tsx'
+import { type RefreshStatus, describeRefresh } from '../shared/describeRefresh.ts'
 import { AUDIT_ACTION_LABELS, formatTimestamp } from '../shared/format.ts'
 import { EmptyState, LoadingState } from '../shared/States.tsx'
 import { StatusBanner } from '../shared/StatusBanner.tsx'
@@ -15,16 +16,16 @@ import { FeatureFlagEditForm } from './FeatureFlagEditForm.tsx'
 
 interface Props {
   flagId: string
-  /** Called after a successful mutation so the parent can refresh the list. */
-  onMutated: () => void
-  /** True while the parent's list refetch is still in flight. */
-  listRefreshing: boolean
+  /** Called whenever the server reports a state this panel did not have (success or 409). */
+  reloadList: () => void
+  /** Status of the parent's list query, so the banner never claims a refresh it cannot see. */
+  listStatus: RefreshStatus
 }
 
 const isEmptyList = (events: AuditEvent[]) => events.length === 0
 
 /** Mounted per flag id (keyed by the parent) so no state leaks between flags. */
-export function FeatureFlagDetailPanel({ flagId, onMutated, listRefreshing }: Props) {
+export function FeatureFlagDetailPanel({ flagId, reloadList, listStatus }: Props) {
   const client = useApiClient()
   const detail = useQuery((signal) => client.getFeatureFlag(flagId, signal), flagId)
   const audit = useQuery(
@@ -43,7 +44,7 @@ export function FeatureFlagDetailPanel({ flagId, onMutated, listRefreshing }: Pr
   const dismissSuccess = () => notices.dismiss(successKey)
 
   const flag = detail.state.data
-  const refreshing = listRefreshing || audit.state.status === 'loading'
+  const refreshSummary = describeRefresh({ list: listStatus, 'audit trail': audit.state.status })
   // The form is stale if the server stops offering edits (e.g. after an identity switch refetch).
   const showForm = editing && flag?.can_edit === true
 
@@ -62,17 +63,21 @@ export function FeatureFlagDetailPanel({ flagId, onMutated, listRefreshing }: Pr
       })
       setEditing(false)
       audit.reload()
-      onMutated()
+      reloadList()
     } catch (error: unknown) {
       const apiError = toApiError(error)
       setActionError(apiError)
-      if (apiError.status === 409) {
-        detail.reload()
-        audit.reload()
-      }
+      if (apiError.status === 409) reloadAll()
     } finally {
       setPending(false)
     }
+  }
+
+  /** A 409 means the server holds state this page has not seen: refetch everything showing it. */
+  function reloadAll() {
+    detail.reload()
+    audit.reload()
+    reloadList()
   }
 
   if (detail.state.status === 'error') {
@@ -100,8 +105,7 @@ export function FeatureFlagDetailPanel({ flagId, onMutated, listRefreshing }: Pr
               at <time dateTime={success.at}>{formatTimestamp(success.at)}</time>
             </>
           )}
-          . Detail updated;{' '}
-          {refreshing ? 'refreshing list and audit trail…' : 'list and audit trail refreshed.'}
+          . Detail updated; {refreshSummary}
         </StatusBanner>
       )}
       {actionError && (
@@ -112,8 +116,7 @@ export function FeatureFlagDetailPanel({ flagId, onMutated, listRefreshing }: Pr
             actionError.status === 409
               ? () => {
                   setActionError(null)
-                  detail.reload()
-                  audit.reload()
+                  reloadAll()
                 }
               : undefined
           }

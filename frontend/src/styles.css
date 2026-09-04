@@ -424,6 +424,12 @@ th.numeric {
   font-variant-numeric: tabular-nums;
 }
 
+td.description {
+  color: var(--color-muted);
+  font-size: 0.9375rem;
+  max-width: 24rem;
+}
+
 tr.selectable {
   cursor: pointer;
 }

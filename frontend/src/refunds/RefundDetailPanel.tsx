@@ -5,6 +5,7 @@ import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
 import { navigate, refundHash } from '../router.ts'
 import { ErrorNotice } from '../shared/ErrorNotice.tsx'
+import { type RefreshStatus, describeRefresh } from '../shared/describeRefresh.ts'
 import {
   AUDIT_ACTION_LABELS,
   REFUND_ACTION_LABELS,
@@ -20,16 +21,16 @@ import { RefundDetail } from './RefundDetail.tsx'
 
 interface Props {
   refundId: string
-  /** Called after a successful mutation so the parent can refresh the queue. */
-  onMutated: () => void
-  /** True while the parent's queue refetch is still in flight. */
-  queueRefreshing: boolean
+  /** Called whenever the server reports a state this panel did not have (success or 409). */
+  reloadQueue: () => void
+  /** Status of the parent's queue query, so the banner never claims a refresh it cannot see. */
+  queueStatus: RefreshStatus
 }
 
 const isEmptyList = (events: AuditEvent[]) => events.length === 0
 
 /** Mounted per refund id (keyed by the parent) so no state leaks between refunds. */
-export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Props) {
+export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props) {
   const client = useApiClient()
   const detail = useQuery((signal) => client.getRefund(refundId, signal), refundId)
   const audit = useQuery(
@@ -49,7 +50,7 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
 
   const refund = detail.state.data
   const allowedActions = refund?.allowed_actions ?? []
-  const refreshing = queueRefreshing || audit.state.status === 'loading'
+  const refreshSummary = describeRefresh({ queue: queueStatus, 'audit trail': audit.state.status })
 
   // A form for an action the server no longer offers (e.g. after a 409 refresh) is stale.
   const activeForm = openAction && allowedActions.includes(openAction) ? openAction : null
@@ -70,17 +71,21 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
       }
       setOpenAction(null)
       audit.reload()
-      onMutated()
+      reloadQueue()
     } catch (error: unknown) {
       const apiError = toApiError(error)
       setActionError(apiError)
-      if (apiError.status === 409) {
-        detail.reload()
-        audit.reload()
-      }
+      if (apiError.status === 409) reloadAll()
     } finally {
       setPending(false)
     }
+  }
+
+  /** A 409 means the server holds state this page has not seen: refetch everything showing it. */
+  function reloadAll() {
+    detail.reload()
+    audit.reload()
+    reloadQueue()
   }
 
   if (detail.state.status === 'error') {
@@ -108,8 +113,7 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
               at <time dateTime={success.at}>{formatTimestamp(success.at)}</time>
             </>
           )}
-          . Detail updated;{' '}
-          {refreshing ? 'refreshing queue and audit trail…' : 'queue and audit trail refreshed.'}
+          . Detail updated; {refreshSummary}
         </StatusBanner>
       )}
       {actionError && (
@@ -120,8 +124,7 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
             actionError.status === 409
               ? () => {
                   setActionError(null)
-                  detail.reload()
-                  audit.reload()
+                  reloadAll()
                 }
               : undefined
           }
