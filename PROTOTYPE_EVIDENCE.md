@@ -21,8 +21,8 @@ end times explicitly.
 | 1 | Runnable skeleton (scaffold + `/health`) | [#1](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/1) | Merged |
 | 2 | Backend foundation: persistence, seed, demo identity, read-only API | [#2](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/2) | Merged |
 | 3 | Refund mutations, RBAC enforcement, atomic audit writes | [#4](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/4) | Merged |
-| 4 | Frontend shell + Refund Operations UI | [#5](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/5) | In review |
-| 5 | Feature Flags reuse proof | — | Not started |
+| 4 | Frontend shell + Refund Operations UI | [#5](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/5) | Merged |
+| 5 | Feature Flags end-to-end (reuse proof) | [#6](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/6) | In review |
 | 6 | Final verification and handoff | — | Not started |
 
 ## Checkpoint 1 — Runnable skeleton (PR #1)
@@ -570,3 +570,239 @@ and the confirm button; the refund detail renders as two label/value tables
 (`<th scope="row">`) instead of a flat `<dl>`; the success banner persists
 until Dismiss (see above) instead of being lost when the detail panel remounts.
 Gates re-run: oxlint clean, vitest 48, build ok.
+
+## Checkpoint 5 — Feature Flags end-to-end (PR #6)
+
+### Planning
+
+One-round design interview (8 decisions, all accepted, four with amendments)
+after PR #5 merged; the branch was cut from the merged `main`, not from the
+review branch. Decisions that shaped the implementation:
+
+- `PATCH /api/feature-flags/{id}` body: optional `enabled` / `rollout_percent`
+  (at least one required), required trimmed `reason` (the same `ActionReason`
+  type as refunds), `confirm_production` defaulting to `false`. Owner
+  amendment: explicit `null` for a change field must be rejected or
+  consistently treated as omitted — it is **rejected** (`422`).
+- No-op requests are `409 NO_CHANGE` with `details.current`, so "every
+  successful mutation writes exactly one audit event" holds without lying about
+  an update. Owner amendment: the UI maps this code to "No changes to apply",
+  not the shared 409 heading — `describeApiError` became code-aware.
+- Authorization is checked **before** production confirmation; a missing
+  confirmation for an authorized admin is `422 PRODUCTION_CONFIRMATION_REQUIRED`
+  (a `ValidationError` subclass), never `403`. Staging ignores the flag.
+- Pure `feature_flag_edit_denial(role, environment)` in `policy.py` reusing
+  `ACTION_NOT_PERMITTED_FOR_ROLE`; service mirrors the refund shape (load →
+  authorize → confirm → no-op check → guarded `UPDATE` → audit → one commit).
+- `FeatureFlagOut` carries server-computed `can_edit` and
+  `requires_confirmation`. They are hints; PATCH re-checks both.
+- `record_refund_event` generalized into one domain-neutral `record_event`
+  used by both services; `feature_flag_snapshot` added. Owner amendment: the
+  concurrency guard must not rely on clock uniqueness alone — the conditional
+  `UPDATE` matches the observed `enabled`, `rollout_percent`, **and**
+  `updated_at`, and a test drives a `50 → 60 → 50` interleaving to show that
+  restoring the observed values does not slip past the timestamp check.
+- UI: same split layout as refunds; Confirm disabled until the production box
+  is ticked; consequence accepted that "production without confirmation → 422"
+  is unreachable from the UI (like the refund 403) and is proven by tests and
+  `curl`. Owner amendment on notices: reuse the existing pattern rather than
+  adding a second one — the `NoticesProvider` introduced for the "banner must
+  survive until Dismiss" request already existed, so flags use it keyed by
+  `feature_flag:<id>`.
+- Success banner is timestamp-only ("Feature flag updated at …"); the actor is
+  read from the refreshed audit event, never inferred from the current identity.
+
+### Delivered
+
+Backend (three commits, each green on its own):
+
+- `policy.py`: `feature_flag_edit_denial`, `ROLLOUT_MIN` / `ROLLOUT_MAX`
+  (moved here so the schema does not import the service).
+- `audit.py`: `record_event(session, *, actor, action, entity_type, entity_id,
+  before_state, after_state, reason, occurred_at)`; `refund_service.py` now
+  calls it, and `feature_flag_snapshot` sits beside `refund_snapshot`.
+- `feature_flag_service.py`: `FlagChanges`, `update_feature_flag`, `can_edit`,
+  `requires_confirmation`; guarded `UPDATE ... WHERE id = ? AND enabled = ? AND
+  rollout_percent = ? AND updated_at = ?`; `NoChangeError` (409) and
+  `StaleUpdateError` (409) added to `errors.py` beside
+  `ProductionConfirmationRequiredError` (422).
+- `schemas.py`: `FeatureFlagPatch` with `StrictBool` / `StrictInt` (so
+  `"true"`, `1`, `"50"` are rejected — `confirm_production` must be a literal
+  JSON `true`), explicit-`null` rejection, at-least-one-change validator;
+  `FeatureFlagOut` gains `can_edit`, `requires_confirmation`.
+- `routes_feature_flags.py`: `PATCH /{flag_id}`; list and detail responses
+  computed per calling user.
+
+Frontend (one commit):
+
+- `api/client.ts`: `listFeatureFlags(filters)`, `getFeatureFlag`,
+  `updateFeatureFlag(id, patch)` (`PATCH`), and a generic
+  `listAuditEvents(entityType, entityId)` that the refund panel now uses too.
+- `router.ts`: `#/feature-flags/<id>` selection, `featureFlagHash`.
+- `shared/describeApiError.ts`: code-aware headings (`NO_CHANGE` → "No changes
+  to apply", `STALE_UPDATE` / `INVALID_STATE_TRANSITION` → "Record has
+  changed", `PRODUCTION_CONFIRMATION_REQUIRED`); still status/code only.
+- `shared/format.ts`: `ENVIRONMENT_LABELS`, `formatEnabled`, `formatRollout`.
+- `shared/ReasonField.tsx` and `shared/DetailsTable.tsx` extracted from the
+  refund components and used by both modules.
+- `featureFlags/`: `FeatureFlagsPage` (environment filter as a query param),
+  `FeatureFlagTable`, `FeatureFlagDetail`, `FeatureFlagDetailPanel` (detail +
+  audit queries via `useQuery`, 200/409 handling identical in shape to refunds,
+  notice via `NoticesProvider`, `AuditEventList`), `FeatureFlagEditForm`, and
+  the pure `buildFlagPatch.ts` (`decidePatch`) that decides what to send.
+- Production distinction: red `Production` tag, red left border on production
+  rows, red confirmation block reading "This changes a **production** flag.
+  Prototype only: no real system is affected." Detail rows and the page
+  header repeat that the flags are synthetic.
+
+Reuse check (AGENTS.md asks for remaining duplication to be reported): the
+flags panel reuses `useApiClient`, `useQuery`, `toApiError`, `ErrorNotice`,
+`StatusBanner`, `NoticesProvider`, `LoadingState` / `EmptyState`,
+`AuditEventList`, `ReasonField`, `DetailsTable`, and the formatters. What is
+still duplicated between `RefundDetailPanel` and `FeatureFlagDetailPanel` is
+the ~30-line mutation sequence (pending flag, clear error, call, `setData`,
+record notice, reload audit, 409 → refetch). Both are small enough that a
+shared `useMutation` hook was not judged worth its abstraction yet; noted as a
+follow-up rather than done speculatively.
+
+### Commands run and results
+
+```bash
+cd backend
+./.venv/bin/ruff check .                # All checks passed
+./.venv/bin/ruff format --check .       # already formatted
+./.venv/bin/pytest                      # 227 passed (153 before; +74)
+
+cd frontend && nvm use 22
+npm run lint                            # oxlint: clean
+npm test                                # vitest: 6 files, 64 tests passed (48 before; +16)
+npm run build                           # tsc -b && vite build: built
+
+git diff --check                        # clean
+```
+
+The refund service and API suites (63 tests) were re-run on their own after the
+`record_event` generalization, before the feature-flag service was added, and
+passed unchanged.
+
+### Automated backend tests (74 new)
+
+- `test_feature_flag_policy.py`: role × environment matrix for
+  `feature_flag_edit_denial` (support denied everywhere, ops staging only,
+  admin both) and agreement with the `can_edit_*_flags` booleans already served
+  by `/api/session`.
+- `test_feature_flag_service.py`: success commits the flag and exactly one
+  audit event with full before/after snapshots; admin production update with
+  confirmation; parametrized failure paths (support/ops role denials, missing
+  confirmation, no-op, unknown flag) each leave the flag row **and** the audit
+  count untouched; `NO_CHANGE` details report current values; a monkeypatched
+  `record_event` raising after the flag `UPDATE` rolls the flag back; stale
+  write rejected by the guarded update; the `50 → 60 → 50` interleaving is
+  still rejected because `updated_at` moved; capability hints follow policy;
+  `FlagChanges` validation.
+- `test_feature_flag_mutations.py` (API): environment permissions for all
+  three users on staging and production; browser-supplied role/limit headers
+  ignored; missing identity wins over an invalid body; production change with
+  `false`, omitted, `"true"`, and `1` all `422 PRODUCTION_CONFIRMATION_REQUIRED`;
+  ops gets `403` on production even with confirmation; staging ignores the
+  flag; rollouts `0` and `100` succeed; `-1`, `101`, `"50"`, `12.5`, explicit
+  `null`, empty body, missing / blank / whitespace-only / 1,001-character
+  reasons all `422` and change nothing; 1- and 1,000-character reasons succeed
+  and are stored trimmed; no-op is `409 NO_CHANGE` with no write; repeating a
+  completed update is `409`; unknown flag `404`; a successful update writes
+  exactly one event with the expected `before_state` / `after_state`,
+  `reason`, actor, and entity fields; partial updates leave the other field
+  alone; reads expose `can_edit` / `requires_confirmation` per user.
+- `test_identity.py`: OpenAPI operation count updated to 11 (the new PATCH).
+
+### Automated frontend tests (16 new, pure functions)
+
+- `featureFlags/buildFlagPatch.test.ts`: draft starts from the loaded flag;
+  no change → `no_change`; changed field without a reason → `reason_required`
+  (blank / whitespace); only differing fields are sent, reason trimmed; `-1`,
+  `101`, `12.5`, `100`, `0` are all **sent** (range and integer-ness are the
+  server's call); only a non-numeric rollout is gated client-side; production
+  gating follows `requires_confirmation` from the server, and
+  `confirm_production: true` is sent only after the box is ticked and never for
+  a flag that did not require it.
+- `shared/describeApiError.test.ts`: `NO_CHANGE`, `STALE_UPDATE`,
+  `PRODUCTION_CONFIRMATION_REQUIRED` headings; generic `VALIDATION_ERROR`
+  unchanged.
+- `shared/format.test.ts`: `formatEnabled`, `formatRollout`.
+- `router.test.ts`: `#/feature-flags`, `#/feature-flags/<id>`, round trip.
+
+### Direct HTTP evidence (fresh seed, `curl` against `uvicorn` on a scratch DB)
+
+| Request | Result |
+|---|---|
+| Olivia `PATCH .../flag_new_risk_scoring_production` with `confirm_production: true` | `403 ACTION_NOT_PERMITTED_FOR_ROLE`, `details.editable_environments: ["staging"]` |
+| Avery `PATCH .../flag_new_risk_scoring_production` without confirmation | `422 PRODUCTION_CONFIRMATION_REQUIRED`, `details.environment: production` |
+| Olivia `PATCH .../flag_bulk_export_staging` `rollout_percent: 101` | `422 VALIDATION_ERROR`, `less_than_equal` on `body.rollout_percent` |
+| Olivia `PATCH .../flag_bulk_export_staging` `rollout_percent: 50` (current) | `409 NO_CHANGE`, `details.current: {enabled: true, rollout_percent: 50}` |
+| Olivia `PATCH .../flag_bulk_export_staging` `rollout_percent: 75`, reason `"  widen  "` | `200`, `rollout_percent: 75`, new `updated_at`, `can_edit: true` |
+| `GET /api/audit-events?entity_type=feature_flag&entity_id=flag_bulk_export_staging` | one `feature_flag.updated` event by Olivia Ops, reason `widen`, `before_state.rollout_percent: 50` → `after_state.rollout_percent: 75` |
+| Sam `GET /api/feature-flags` | every flag `can_edit: false`; `requires_confirmation` true only for the two production flags |
+
+The scratch database was deleted afterwards; the committed seed is unchanged.
+
+### Browser verification
+
+**Not performed by the agent.** The owner stated they will verify in the
+browser themselves, so no screenshots, recordings, or console checks are
+claimed here. Rendering decisions that would otherwise be shown in the browser
+(`NO_CHANGE` heading, form gating, what the client sends) are covered by the
+pure tests above; server behaviour by the API tests and the `curl` table.
+Suggested owner pass: Sam sees no **Edit flag** button on any flag; Olivia sees
+it on staging only; Avery sees it on both, with the red confirmation block and
+a disabled Confirm on production until the box is ticked; `101` in the rollout
+field shows the shared `422` notice; resubmitting current values shows "No
+changes to apply"; a successful save updates the list row, the detail, the
+banner, and the audit list without a reload.
+
+### Elapsed milestones
+
+PR #5 merged at 2026-09-04 00:25 UTC. The four implementation commits on this
+branch are timestamped 00:50, 00:52, 00:54, and 01:01 UTC (`git log
+--format='%h %ci %s' main..`); the design interview and the backend/service
+work preceded the first commit, so the ~36 minutes from merge to the frontend
+commit is the closest honest wall-clock figure for this checkpoint. Docs and
+gates followed immediately after.
+
+### Human interventions
+
+- Design interview: 8 decisions, all accepted; owner amendments on explicit
+  `null` handling, code-aware 409 wording, the concurrency guard (observed
+  values, not the clock alone), and not adding a second notice mechanism.
+- Owner asked that the PR #5 review corrections land before this work built
+  on them (they had already merged) and that refund tests be re-run explicitly
+  after generalizing the audit recorder (done).
+- Browser verification is owned by the project owner for this checkpoint.
+
+### Limitations at this checkpoint
+
+- `FeatureFlag` has no `last_updated_by` / reason columns; the list and detail
+  show only `updated_at`, and the actor is visible only in the audit list.
+- "Production without confirmation → 422" and "role not permitted → 403" are
+  unreachable from the UI by design (Confirm is disabled; the button is not
+  rendered). They are proven by tests and `curl`, not by clicking.
+- The UI gates a non-numeric rollout (`""`, `abc`) client-side because a
+  `type="number"` input cannot submit those; everything numeric, including
+  `12.5`, is sent so the server's `422` is the visible outcome.
+- The mutation sequence in the two detail panels is still duplicated (see the
+  reuse check above).
+- Component behaviour (button visibility per role, confirmation gating,
+  post-save refresh) is not covered by automated UI tests; it is left to the
+  owner's browser pass.
+- The standalone Audit Trail page remains a placeholder.
+- The audit trail is append-only through the application only: nothing
+  prevents direct SQLite edits, and there is no hash chain, WORM storage, or
+  external log shipping.
+
+### Remaining production work
+
+Unchanged from the README: real SSO and identity, secrets management, a
+production database with migrations, tamper-resistant audit retention, DLP,
+monitoring/alerting, backups, incident response, and real integrations. For
+flags specifically: a real flag-evaluation service, per-segment targeting,
+scheduled rollouts, and approval workflows (two-person rule) for production
+changes — none of which this prototype claims to provide.

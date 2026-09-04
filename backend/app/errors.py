@@ -66,6 +66,24 @@ class UnsupportedCurrencyError(ValidationError):
     code = "UNSUPPORTED_CURRENCY"
 
 
+class ProductionConfirmationRequiredError(ValidationError):
+    code = "PRODUCTION_CONFIRMATION_REQUIRED"
+
+
+class NoChangeError(AppError):
+    """The request would leave the record exactly as it is; nothing is written or audited."""
+
+    status_code = 409
+    code = "NO_CHANGE"
+
+
+class StaleUpdateError(AppError):
+    """The record changed between being read and the guarded update; nothing was written."""
+
+    status_code = 409
+    code = "STALE_UPDATE"
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:

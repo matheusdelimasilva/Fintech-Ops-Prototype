@@ -61,6 +61,21 @@ export interface FeatureFlag {
   enabled: boolean
   rollout_percent: number
   updated_at: string
+  /** Server-computed for the requesting user. Hints only: PATCH re-checks both. */
+  can_edit: boolean
+  requires_confirmation: boolean
+}
+
+/** Body of PATCH /api/feature-flags/{id}. Omit a field to leave it unchanged; never send null. */
+export interface FeatureFlagPatch {
+  enabled?: boolean
+  rollout_percent?: number
+  reason: string
+  confirm_production?: boolean
+}
+
+export interface FeatureFlagListFilters {
+  environment?: Environment
 }
 
 export type Snapshot = Record<string, unknown>

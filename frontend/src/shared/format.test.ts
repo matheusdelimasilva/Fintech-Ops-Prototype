@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatApprovalLimit, formatDate, formatMoney, formatTimestamp, humanizeKey } from './format.ts'
+import {
+  formatApprovalLimit,
+  formatDate,
+  formatEnabled,
+  formatMoney,
+  formatRollout,
+  formatTimestamp,
+  humanizeKey,
+} from './format.ts'
 
 describe('formatMoney', () => {
   it.each([
@@ -38,6 +46,15 @@ describe('formatTimestamp', () => {
 
   it('passes through unparseable input instead of showing Invalid Date', () => {
     expect(formatTimestamp('not-a-date')).toBe('not-a-date')
+  })
+})
+
+describe('feature flag formatters', () => {
+  it('labels enabled state and rollout', () => {
+    expect(formatEnabled(true)).toBe('Enabled')
+    expect(formatEnabled(false)).toBe('Disabled')
+    expect(formatRollout(0)).toBe('0%')
+    expect(formatRollout(100)).toBe('100%')
   })
 })
 
