@@ -25,8 +25,16 @@ server-side demo identity resolution, read-only JSON endpoints for the session,
 refunds, feature flags, and audit events, and the refund workflow —
 approve / reject / escalate with server-enforced approval limits, required
 reasons, state transitions, and an audit event written in the same transaction
-as the refund. Feature-flag mutations and the frontend modules are not
-implemented yet; the frontend is still a placeholder page showing backend health.
+as the refund.
+
+Frontend: application shell with hash navigation (`#/refunds`,
+`#/refunds/<id>`, `#/feature-flags`, `#/audit`), a demo-user switcher backed
+by `GET /api/session`, and the Refund Operations module — server-filtered
+queue (search, status, risk), detail view, approve / reject / escalate forms
+with required reasons, buttons driven by the server's `allowed_actions`, and
+the refund's audit trail with changed-field diffs. Feature Flags and the
+standalone Audit Trail pages are placeholders; feature-flag mutations are not
+implemented yet.
 
 ## Prerequisites
 
@@ -87,13 +95,22 @@ nvm use            # Node 22, from ../.nvmrc
 npm install
 npm run dev        # dev server on http://localhost:5173
 npm run lint       # oxlint
+npm test           # vitest (pure-function tests: API client, error presentation, formatters, router, audit diff)
 npm run build      # tsc -b && vite build (production build into dist/)
 npm run preview    # serve the production build
 ```
 
 The frontend calls the backend at `http://localhost:8000` by default; override
 with the `VITE_API_BASE_URL` environment variable. Start the backend before the
-frontend, otherwise the placeholder page reports the API as unreachable.
+frontend, otherwise the user switcher and queue report the API as unreachable.
+
+The acting demo user is chosen in the header (default Sam Support) and stored in
+`localStorage`; the browser sends only that user's ID in `X-Demo-User-Id`. Role,
+approval limit, and per-refund `allowed_actions` shown in the UI all come from
+the server. Actions the server does not allow are simply not offered; the
+backend still re-authorizes every submitted action. Switching users keeps the
+refund selected in the URL hash (so the same case can be compared across roles)
+and refetches everything for the new identity.
 
 ### Seed/reset
 
