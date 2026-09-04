@@ -33,7 +33,7 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
   const client = useApiClient()
   const detail = useQuery((signal) => client.getRefund(refundId, signal), refundId)
   const audit = useQuery(
-    (signal) => client.listRefundAuditEvents(refundId, signal),
+    (signal) => client.listAuditEvents('refund', refundId, signal),
     refundId,
     { isEmpty: isEmptyList },
   )

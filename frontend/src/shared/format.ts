@@ -1,5 +1,6 @@
 import type {
   AuditAction,
+  Environment,
   PaymentStatus,
   RefundAction,
   RefundStatus,
@@ -93,6 +94,19 @@ export const REFUND_ACTION_TONE: Record<RefundAction, 'success' | 'danger' | 'wa
   approve: 'success',
   reject: 'danger',
   escalate: 'warning',
+}
+
+export const ENVIRONMENT_LABELS: Record<Environment, string> = {
+  staging: 'Staging',
+  production: 'Production',
+}
+
+export function formatEnabled(enabled: boolean): string {
+  return enabled ? 'Enabled' : 'Disabled'
+}
+
+export function formatRollout(percent: number): string {
+  return `${percent}%`
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {

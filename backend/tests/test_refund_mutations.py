@@ -274,7 +274,7 @@ def test_unexpected_failure_returns_the_error_envelope_and_persists_nothing(
     def explode(*_: Any, **__: Any) -> None:
         raise RuntimeError("audit store unavailable")
 
-    monkeypatch.setattr(refund_service, "record_refund_event", explode)
+    monkeypatch.setattr(refund_service, "record_event", explode)
     factory = db.make_session_factory(seeded_engine)
 
     def override_get_session() -> Any:

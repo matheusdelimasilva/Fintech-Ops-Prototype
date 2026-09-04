@@ -1,3 +1,4 @@
+import { FeatureFlagsPage } from './featureFlags/FeatureFlagsPage.tsx'
 import { UserSwitcher } from './identity/UserSwitcher.tsx'
 import { useIdentity } from './identity/context.ts'
 import { RefundsPage } from './refunds/RefundsPage.tsx'
@@ -60,7 +61,7 @@ function App() {
       </div>
       <main key={userId} className="shell app-main">
         {route.page === 'refunds' && <RefundsPage selectedId={route.refundId} />}
-        {route.page === 'feature-flags' && <PlaceholderPage title="Feature Flags" />}
+        {route.page === 'feature-flags' && <FeatureFlagsPage selectedId={route.flagId} />}
         {route.page === 'audit' && <PlaceholderPage title="Audit Trail" />}
       </main>
     </>

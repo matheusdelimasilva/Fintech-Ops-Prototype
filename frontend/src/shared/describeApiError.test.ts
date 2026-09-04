@@ -38,6 +38,28 @@ describe('describeApiError', () => {
     expect(describeApiError(new ApiError(status, 'ANY', 'msg')).heading).toBe(heading)
   })
 
+  it('is code-aware for 409 and production confirmation without parsing messages', () => {
+    const noChange = describeApiError(
+      new ApiError(409, 'NO_CHANGE', 'Record has changed.', {
+        current: { enabled: true, rollout_percent: 50 },
+      }),
+    )
+    expect(noChange.heading).toBe('No changes to apply')
+    expect(noChange.suggestsRefresh).toBe(true)
+    expect(noChange.details).toEqual([
+      { label: 'Current', value: '{"enabled":true,"rollout_percent":50}' },
+    ])
+    expect(describeApiError(new ApiError(409, 'STALE_UPDATE', 'x')).heading).toBe(
+      'Record has changed',
+    )
+    expect(
+      describeApiError(new ApiError(422, 'PRODUCTION_CONFIRMATION_REQUIRED', 'x')).heading,
+    ).toBe('Production confirmation required')
+    expect(describeApiError(new ApiError(422, 'VALIDATION_ERROR', 'x')).heading).toBe(
+      'Check your input',
+    )
+  })
+
   it('suggests a refresh only for 409', () => {
     expect(describeApiError(new ApiError(409, 'INVALID_STATE_TRANSITION', 'x')).suggestsRefresh).toBe(
       true,

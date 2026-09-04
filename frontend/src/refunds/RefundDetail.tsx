@@ -1,21 +1,17 @@
 import type { ReactNode } from 'react'
 import type { Refund } from '../api/types.ts'
+import { Timestamp } from '../shared/DetailsTable.tsx'
 import {
   AUDIT_ACTION_LABELS,
   PAYMENT_STATUS_LABELS,
   REFUND_STATUS_LABELS,
   RISK_LABELS,
   formatMoney,
-  formatTimestamp,
   humanizeKey,
 } from '../shared/format.ts'
 
 interface Props {
   refund: Refund
-}
-
-function Timestamp({ value }: { value: string }) {
-  return <time dateTime={value}>{formatTimestamp(value)}</time>
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {

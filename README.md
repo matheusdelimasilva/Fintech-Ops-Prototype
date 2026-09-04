@@ -22,19 +22,23 @@ All identities and business data are synthetic.
 
 Backend: SQLite persistence (SQLAlchemy), deterministic synthetic seed data,
 server-side demo identity resolution, read-only JSON endpoints for the session,
-refunds, feature flags, and audit events, and the refund workflow —
+refunds, feature flags, and audit events, the refund workflow —
 approve / reject / escalate with server-enforced approval limits, required
 reasons, state transitions, and an audit event written in the same transaction
-as the refund.
+as the refund — and feature-flag updates with server-enforced environment
+permissions, mandatory production confirmation, and the same atomic audit
+write.
 
 Frontend: application shell with hash navigation (`#/refunds`,
-`#/refunds/<id>`, `#/feature-flags`, `#/audit`), a demo-user switcher backed
-by `GET /api/session`, and the Refund Operations module — server-filtered
-queue (search, status, risk), detail view, approve / reject / escalate forms
-with required reasons, buttons driven by the server's `allowed_actions`, and
-the refund's audit trail with changed-field diffs. Feature Flags and the
-standalone Audit Trail pages are placeholders; feature-flag mutations are not
-implemented yet.
+`#/refunds/<id>`, `#/feature-flags`, `#/feature-flags/<id>`, `#/audit`), a
+demo-user switcher backed by `GET /api/session`, the Refund Operations module
+— server-filtered queue (search, status, risk), detail view, approve / reject /
+escalate forms with required reasons, buttons driven by the server's
+`allowed_actions`, and the refund's audit trail with changed-field diffs — and
+the Feature Flags module — environment-filtered list, detail, an edit form
+shown only when the server reports `can_edit`, a production confirmation step
+when the server reports `requires_confirmation`, and the flag's audit trail.
+The standalone Audit Trail page is a placeholder.
 
 ## Prerequisites
 
@@ -82,10 +86,33 @@ curl -X POST -H 'X-Demo-User-Id: user_sam_support' -H 'Content-Type: application
 # 403 {"error": {"code": "APPROVAL_LIMIT_EXCEEDED", ..., "details": {"amount_cents": 50001, "approval_limit_cents": 50000, ...}}}
 ```
 
+Feature-flag updates are `PATCH /api/feature-flags/{id}` with a JSON body
+containing at least one of `enabled` (boolean) or `rollout_percent` (integer
+0–100), a required non-blank `reason` (trimmed, at most 1000 characters), and
+optionally `confirm_production` (boolean, default `false`). Types are strict:
+`"true"`, `1`, and `"50"` are rejected, and an explicit `null` for a change
+field is rejected rather than treated as omitted. Support agents cannot edit
+any flag, operations managers may edit staging only, and admins may edit
+staging and production; a production change is also refused unless
+`confirm_production` is exactly `true`. Authorization is checked before the
+confirmation, so an operations manager gets `403` on a production flag whether
+or not they confirm. A request whose values equal the flag's current values is
+`409 NO_CHANGE` and writes nothing. Each flag in the read responses carries
+server-computed `can_edit` and `requires_confirmation` hints for the calling
+user; PATCH re-checks both regardless. Example:
+
+```bash
+curl -X PATCH -H 'X-Demo-User-Id: user_avery_admin' -H 'Content-Type: application/json' \
+  -d '{"enabled": false, "rollout_percent": 0, "reason": "Kill switch", "confirm_production": true}' \
+  http://localhost:8000/api/feature-flags/flag_new_risk_scoring_production
+# 200 {"id": "flag_new_risk_scoring_production", "enabled": false, "rollout_percent": 0, ..., "can_edit": true, "requires_confirmation": true}
+```
+
 Errors use a stable envelope: `{"error": {"code": "...", "message": "...", "details": {}}}`.
 Codes in use: `MISSING_IDENTITY`, `UNKNOWN_IDENTITY` (401); `APPROVAL_LIMIT_EXCEEDED`,
-`ACTION_NOT_PERMITTED_FOR_ROLE` (403); `NOT_FOUND` (404); `INVALID_STATE_TRANSITION`
-(409); `VALIDATION_ERROR`, `UNSUPPORTED_CURRENCY` (422); `INTERNAL_ERROR` (500).
+`ACTION_NOT_PERMITTED_FOR_ROLE` (403); `NOT_FOUND` (404); `INVALID_STATE_TRANSITION`,
+`NO_CHANGE`, `STALE_UPDATE` (409); `VALIDATION_ERROR`, `UNSUPPORTED_CURRENCY`,
+`PRODUCTION_CONFIRMATION_REQUIRED` (422); `INTERNAL_ERROR` (500).
 
 ### Frontend (`frontend/`)
 
@@ -95,7 +122,7 @@ nvm use            # Node 22, from ../.nvmrc
 npm install
 npm run dev        # dev server on http://localhost:5173
 npm run lint       # oxlint
-npm test           # vitest (pure-function tests: API client, error presentation, formatters, router, audit diff)
+npm test           # vitest (pure-function tests: API client, error presentation, formatters, router, audit diff, flag patch decision)
 npm run build      # tsc -b && vite build (production build into dist/)
 npm run preview    # serve the production build
 ```
@@ -109,8 +136,17 @@ The acting demo user is chosen in the header (default Sam Support) and stored in
 approval limit, and per-refund `allowed_actions` shown in the UI all come from
 the server. Actions the server does not allow are simply not offered; the
 backend still re-authorizes every submitted action. Switching users keeps the
-refund selected in the URL hash (so the same case can be compared across roles)
-and refetches everything for the new identity.
+refund or flag selected in the URL hash (so the same record can be compared
+across roles) and refetches everything for the new identity.
+
+On the Feature Flags page the **Edit flag** button appears only when the
+server's `can_edit` is true for the acting user, and the red production
+confirmation block (with its checkbox gating the Confirm button) appears only
+when the server's `requires_confirmation` is true; the browser does not derive
+either rule from the flag's environment. The rollout input has no client-side
+range check, so an out-of-range value reaches the server and its `422` is shown
+through the shared error notice. Production flags are visually marked, and the
+page states that they are synthetic and control no real system.
 
 ### Seed/reset
 
