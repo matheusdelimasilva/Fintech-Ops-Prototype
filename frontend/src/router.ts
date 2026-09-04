@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 export type Route =
   | { page: 'refunds'; refundId: string | null }
-  | { page: 'feature-flags' }
+  | { page: 'feature-flags'; flagId: string | null }
   | { page: 'audit' }
 
 export const DEFAULT_HASH = '#/refunds'
@@ -12,7 +12,7 @@ export function parseHash(hash: string): Route {
   const segments = path.split('/').filter(Boolean)
   switch (segments[0]) {
     case 'feature-flags':
-      return { page: 'feature-flags' }
+      return { page: 'feature-flags', flagId: segments[1] ? decodeURIComponent(segments[1]) : null }
     case 'audit':
       return { page: 'audit' }
     case 'refunds':
@@ -26,12 +26,16 @@ export function refundHash(refundId: string | null): string {
   return refundId ? `#/refunds/${encodeURIComponent(refundId)}` : '#/refunds'
 }
 
+export function featureFlagHash(flagId: string | null): string {
+  return flagId ? `#/feature-flags/${encodeURIComponent(flagId)}` : '#/feature-flags'
+}
+
 export function navigate(hash: string): void {
   if (window.location.hash === hash) return
   window.location.hash = hash
 }
 
-/** Tiny hash router: the URL is the single source of truth for page and selected refund. */
+/** Tiny hash router: the URL is the single source of truth for page and selected record. */
 export function useHashRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash))
 

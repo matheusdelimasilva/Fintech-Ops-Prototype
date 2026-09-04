@@ -484,6 +484,52 @@ tr[aria-selected='true'] {
   border-color: var(--color-warning-border);
 }
 
+.tag-staging {
+  background: #eef1f5;
+}
+
+.tag-production {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  font-weight: 600;
+}
+
+.tag-enabled {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.tag-disabled {
+  background: #eef1f5;
+}
+
+/* Feature flags */
+
+tr.env-production > td:first-child {
+  border-left: 3px solid var(--color-error-border);
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rollout-input {
+  max-width: 8rem;
+}
+
+.production-confirm {
+  padding: var(--space-3);
+  border: 2px solid var(--color-error-border);
+  border-radius: var(--radius);
+  background: var(--color-error-bg);
+}
+
+.production-confirm-title {
+  margin: 0 0 var(--space-1);
+}
+
 /* Audit list */
 
 .audit-list {

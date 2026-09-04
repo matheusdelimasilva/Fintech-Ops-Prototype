@@ -11,6 +11,14 @@ export interface ErrorPresentation {
   suggestsRefresh: boolean
 }
 
+/** Backend codes with a more specific heading than their HTTP status alone would give. */
+const CODE_HEADINGS: Record<string, string> = {
+  NO_CHANGE: 'No changes to apply',
+  STALE_UPDATE: 'Record has changed',
+  INVALID_STATE_TRANSITION: 'Record has changed',
+  PRODUCTION_CONFIRMATION_REQUIRED: 'Production confirmation required',
+}
+
 /**
  * Pure mapping from an ApiError to what the UI shows. Decisions are made on `status` and
  * `code` only; the message text is displayed, never interpreted.
@@ -28,6 +36,8 @@ function headingFor(error: ApiError): string {
   if (error.code === NETWORK_ERROR) return 'Backend unreachable'
   if (error.code === INVALID_RESPONSE) return 'Unexpected response from the backend'
   if (error.code === UNEXPECTED_ERROR) return 'Something went wrong in the app'
+  const byCode = CODE_HEADINGS[error.code]
+  if (byCode !== undefined) return byCode
   switch (error.status) {
     case 401:
       return 'Identity not recognized'

@@ -1,6 +1,9 @@
 import type {
   AuditEvent,
+  EntityType,
   FeatureFlag,
+  FeatureFlagListFilters,
+  FeatureFlagPatch,
   Refund,
   RefundAction,
   RefundListFilters,
@@ -100,8 +103,10 @@ export interface ApiClient {
   listRefunds(filters: RefundListFilters, signal?: AbortSignal): Promise<Refund[]>
   getRefund(refundId: string, signal?: AbortSignal): Promise<Refund>
   performRefundAction(refundId: string, action: RefundAction, reason: string): Promise<Refund>
-  listRefundAuditEvents(refundId: string, signal?: AbortSignal): Promise<AuditEvent[]>
-  listFeatureFlags(signal?: AbortSignal): Promise<FeatureFlag[]>
+  listFeatureFlags(filters: FeatureFlagListFilters, signal?: AbortSignal): Promise<FeatureFlag[]>
+  getFeatureFlag(flagId: string, signal?: AbortSignal): Promise<FeatureFlag>
+  updateFeatureFlag(flagId: string, patch: FeatureFlagPatch): Promise<FeatureFlag>
+  listAuditEvents(entityType: EntityType, entityId: string, signal?: AbortSignal): Promise<AuditEvent[]>
 }
 
 /**
@@ -114,7 +119,7 @@ export function createApiClient(
   baseUrl: string = API_BASE_URL,
 ): ApiClient {
   async function request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PATCH',
     path: string,
     body?: unknown,
     signal?: AbortSignal,
@@ -145,13 +150,18 @@ export function createApiClient(
       request('GET', `/api/refunds/${encodeURIComponent(refundId)}`, undefined, signal),
     performRefundAction: (refundId, action, reason) =>
       request('POST', `/api/refunds/${encodeURIComponent(refundId)}/${action}`, { reason }),
-    listRefundAuditEvents: (refundId, signal) =>
+    listFeatureFlags: (filters, signal) =>
+      request('GET', `/api/feature-flags${toQuery({ ...filters })}`, undefined, signal),
+    getFeatureFlag: (flagId, signal) =>
+      request('GET', `/api/feature-flags/${encodeURIComponent(flagId)}`, undefined, signal),
+    updateFeatureFlag: (flagId, patch) =>
+      request('PATCH', `/api/feature-flags/${encodeURIComponent(flagId)}`, patch),
+    listAuditEvents: (entityType, entityId, signal) =>
       request(
         'GET',
-        `/api/audit-events${toQuery({ entity_type: 'refund', entity_id: refundId })}`,
+        `/api/audit-events${toQuery({ entity_type: entityType, entity_id: entityId })}`,
         undefined,
         signal,
       ),
-    listFeatureFlags: (signal) => request('GET', '/api/feature-flags', undefined, signal),
   }
 }

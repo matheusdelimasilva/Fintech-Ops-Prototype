@@ -1,4 +1,11 @@
-import type { AuditAction, RefundAction, RefundStatus, RiskLevel, Role } from '../api/types.ts'
+import type {
+  AuditAction,
+  Environment,
+  RefundAction,
+  RefundStatus,
+  RiskLevel,
+  Role,
+} from '../api/types.ts'
 
 const moneyFormatters = new Map<string, Intl.NumberFormat>()
 
@@ -80,6 +87,19 @@ export const REFUND_ACTION_TONE: Record<RefundAction, 'success' | 'danger' | 'ne
   approve: 'success',
   reject: 'danger',
   escalate: 'neutral',
+}
+
+export const ENVIRONMENT_LABELS: Record<Environment, string> = {
+  staging: 'Staging',
+  production: 'Production',
+}
+
+export function formatEnabled(enabled: boolean): string {
+  return enabled ? 'Enabled' : 'Disabled'
+}
+
+export function formatRollout(percent: number): string {
+  return `${percent}%`
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {

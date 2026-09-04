@@ -1,5 +1,6 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import type { RefundAction } from '../api/types.ts'
+import { ReasonField } from '../shared/ReasonField.tsx'
 import { REFUND_ACTION_LABELS, REFUND_ACTION_TONE } from '../shared/format.ts'
 
 interface Props {
@@ -9,14 +10,9 @@ interface Props {
   onCancel: () => void
 }
 
-/**
- * Inline confirmation with a required reason. Blank reasons are blocked here for UX only; the
- * backend validates length and content and remains the authority.
- */
+/** Inline confirmation with a required reason; the backend re-validates everything. */
 export function RefundActionForm({ action, pending, onConfirm, onCancel }: Props) {
   const [reason, setReason] = useState('')
-  const reasonId = useId()
-  const helpId = useId()
   const trimmed = reason.trim()
   const label = REFUND_ACTION_LABELS[action]
 
@@ -29,21 +25,14 @@ export function RefundActionForm({ action, pending, onConfirm, onCancel }: Props
         if (trimmed && !pending) onConfirm(trimmed)
       }}
     >
-      <div className="field">
-        <label htmlFor={reasonId}>Reason for {label.toLowerCase()} (required)</label>
-        <textarea
-          id={reasonId}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          aria-describedby={helpId}
-          aria-required="true"
-          disabled={pending}
-          autoFocus
-        />
-        <p id={helpId} className="field-help">
-          Recorded on the refund and in the audit trail. Must not be blank.
-        </p>
-      </div>
+      <ReasonField
+        label={`Reason for ${label.toLowerCase()}`}
+        value={reason}
+        onChange={setReason}
+        help="Recorded on the refund and in the audit trail. Must not be blank."
+        disabled={pending}
+        autoFocus
+      />
       <div className="button-row">
         <button
           type="submit"
