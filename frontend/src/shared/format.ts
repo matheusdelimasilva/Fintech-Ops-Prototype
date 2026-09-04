@@ -1,5 +1,6 @@
 import type {
   AuditAction,
+  EntityType,
   Environment,
   PaymentStatus,
   RefundAction,
@@ -114,6 +115,11 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'refund.rejected': 'Refund rejected',
   'refund.escalated': 'Refund escalated',
   'feature_flag.updated': 'Feature flag updated',
+}
+
+export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+  refund: 'Refund',
+  feature_flag: 'Feature flag',
 }
 
 /** Turns a snapshot key like `last_action_by` into `Last action by`. */
