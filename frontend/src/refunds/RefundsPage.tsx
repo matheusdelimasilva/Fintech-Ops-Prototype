@@ -26,12 +26,20 @@ export function RefundsPage({ selectedId }: Props) {
   )
 
   const hasFilters = Boolean(filters.search || filters.status || filters.risk_level)
+  const count = queue.state.data?.length
 
   return (
     <div className="split">
       <section className="panel" aria-labelledby="queue-heading">
         <h1 id="queue-heading">Refund Operations</h1>
-        <RefundFilters filters={filters} onChange={onFiltersChange} />
+        <div className="queue-toolbar">
+          <RefundFilters filters={filters} onChange={onFiltersChange} />
+          {count !== undefined && (
+            <p className="result-count" role="status">
+              {count === 1 ? '1 refund' : `${count} refunds`}
+            </p>
+          )}
+        </div>
         {queue.state.status === 'loading' && queue.state.data === undefined && (
           <LoadingState label="Loading refunds…" />
         )}
@@ -59,7 +67,7 @@ export function RefundsPage({ selectedId }: Props) {
         )}
       </section>
 
-      <section className="panel" aria-labelledby="detail-heading">
+      <section className="panel panel-detail" aria-labelledby="detail-heading">
         <h2 id="detail-heading">Refund detail</h2>
         {selectedId === null ? (
           <EmptyState title="No refund selected">

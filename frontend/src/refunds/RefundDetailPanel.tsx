@@ -17,7 +17,7 @@ import { StatusBanner } from '../shared/StatusBanner.tsx'
 import { noticeKey, useNotices } from '../shared/noticesContext.ts'
 import { useQuery } from '../shared/useQuery.ts'
 import { RefundActionForm } from './RefundActionForm.tsx'
-import { RefundDetail } from './RefundDetail.tsx'
+import { RefundFacts, RefundSummary } from './RefundDetail.tsx'
 
 interface Props {
   refundId: string
@@ -136,9 +136,9 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
         </p>
       )}
 
-      <RefundDetail refund={refund} />
+      <RefundSummary refund={refund} />
 
-      <section aria-labelledby="actions-heading">
+      <section className="detail-actions" aria-labelledby="actions-heading">
         <h3 id="actions-heading">Actions</h3>
         {allowedActions.length > 0 ? (
           <div className="button-row">
@@ -161,10 +161,14 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
         ) : (
           <p className="muted">No actions are available to you for this refund.</p>
         )}
-        <p className="field-help">
-          Available actions are determined by server policy for the acting user and the refund's
-          current status. The server re-checks every action when it is submitted.
-        </p>
+        <details className="disclosure">
+          <summary>Actions reflect server policy for your role and this refund's status.</summary>
+          <p>
+            Available actions are determined by server policy for the acting user and the refund's
+            current status. The server re-checks every action when it is submitted, so what is shown
+            here is a convenience, not the authorization itself.
+          </p>
+        </details>
         {activeForm && (
           <RefundActionForm
             key={activeForm}
@@ -176,6 +180,8 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
         )}
       </section>
 
+      <RefundFacts refund={refund} />
+
       <section aria-labelledby="audit-heading">
         <h3 id="audit-heading">Audit trail</h3>
         {audit.state.status === 'loading' && audit.state.data === undefined && (
@@ -185,7 +191,7 @@ export function RefundDetailPanel({ refundId, reloadQueue, queueStatus }: Props)
           <ErrorNotice error={audit.state.error} onRetry={audit.reload} />
         )}
         {audit.state.status === 'empty' && (
-          <EmptyState title="No audit events yet">
+          <EmptyState title="No audit events yet" compact>
             <p className="muted">Actions on this refund will appear here with before/after state.</p>
           </EmptyState>
         )}

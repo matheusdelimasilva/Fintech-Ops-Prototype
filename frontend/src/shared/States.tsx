@@ -8,9 +8,17 @@ export function LoadingState({ label }: { label: string }) {
   )
 }
 
-export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
+export function EmptyState({
+  title,
+  children,
+  compact = false,
+}: {
+  title: string
+  children?: ReactNode
+  compact?: boolean
+}) {
   return (
-    <div className="state state-empty">
+    <div className={compact ? 'state state-empty state-compact' : 'state state-empty'}>
       <p>
         <strong>{title}</strong>
       </p>

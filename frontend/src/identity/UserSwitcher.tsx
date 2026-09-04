@@ -8,11 +8,11 @@ export function UserSwitcher() {
   const current = session.status === 'success' ? session.data : null
 
   return (
-    <section className="user-switcher" aria-labelledby="user-switcher-heading">
+    <section className="identity-card" aria-labelledby="user-switcher-heading">
       <h2 id="user-switcher-heading" className="visually-hidden">
         Demo user
       </h2>
-      <div className="user-switcher-row">
+      <div className="identity-card-row">
         <label htmlFor="demo-user-select">Acting as</label>
         {roster.length > 0 ? (
           <select
@@ -35,22 +35,22 @@ export function UserSwitcher() {
           </output>
         )}
       </div>
-      <dl className="user-switcher-facts">
+      <dl className="identity-badges" aria-label="Acting user policy">
         <div>
           <dt>Role</dt>
           <dd>{current ? ROLE_LABELS[current.user.role] : '…'}</dd>
         </div>
         <div>
-          <dt>Refund approval limit</dt>
+          <dt>Refund limit</dt>
           <dd>{current ? formatApprovalLimit(current.policy.approval_limit_cents) : '…'}</dd>
         </div>
         <div>
-          <dt>May escalate refunds</dt>
+          <dt>May escalate</dt>
           <dd>{current ? (current.policy.can_escalate_refunds ? 'Yes' : 'No') : '…'}</dd>
         </div>
       </dl>
       {session.status === 'loading' && (
-        <p role="status" className="muted">
+        <p role="status" className="muted identity-status">
           Resolving identity on the server…
         </p>
       )}
