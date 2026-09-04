@@ -21,11 +21,8 @@ from app.errors import (
 )
 from app.identity import CurrentUser
 from app.models import AuditAction, EntityType, Environment, FeatureFlag
-from app.policy import feature_flag_edit_denial
+from app.policy import ROLLOUT_MAX, ROLLOUT_MIN, feature_flag_edit_denial
 from app.timeutil import utcnow
-
-ROLLOUT_MIN = 0
-ROLLOUT_MAX = 100
 
 
 @dataclass(frozen=True)

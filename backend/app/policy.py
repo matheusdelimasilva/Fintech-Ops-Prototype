@@ -10,6 +10,8 @@ from enum import Enum
 from app.models import Environment, Role
 
 SUPPORTED_CURRENCY = "USD"
+ROLLOUT_MIN = 0
+ROLLOUT_MAX = 100
 
 
 class RefundAction(str, Enum):

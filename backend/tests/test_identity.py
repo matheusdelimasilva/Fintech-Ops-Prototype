@@ -53,8 +53,9 @@ def test_session_with_unknown_user_is_401_unknown_identity(client: TestClient) -
 
 
 def test_schema_lists_the_expected_api_operations() -> None:
-    assert len(EVERY_API_OPERATION) == 10
+    assert len(EVERY_API_OPERATION) == 11
     assert ("POST", "/api/refunds/rfnd_001/approve") in EVERY_API_OPERATION
+    assert ("PATCH", "/api/feature-flags/flag_bulk_export_staging") in EVERY_API_OPERATION
 
 
 @pytest.mark.parametrize(("method", "path"), EVERY_API_OPERATION)
