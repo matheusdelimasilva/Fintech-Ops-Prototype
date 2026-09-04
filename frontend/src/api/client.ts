@@ -1,6 +1,6 @@
 import type {
   AuditEvent,
-  EntityType,
+  AuditListFilters,
   FeatureFlag,
   FeatureFlagListFilters,
   FeatureFlagPatch,
@@ -106,7 +106,7 @@ export interface ApiClient {
   listFeatureFlags(filters: FeatureFlagListFilters, signal?: AbortSignal): Promise<FeatureFlag[]>
   getFeatureFlag(flagId: string, signal?: AbortSignal): Promise<FeatureFlag>
   updateFeatureFlag(flagId: string, patch: FeatureFlagPatch): Promise<FeatureFlag>
-  listAuditEvents(entityType: EntityType, entityId: string, signal?: AbortSignal): Promise<AuditEvent[]>
+  listAuditEvents(filters: AuditListFilters, signal?: AbortSignal): Promise<AuditEvent[]>
 }
 
 /**
@@ -156,12 +156,7 @@ export function createApiClient(
       request('GET', `/api/feature-flags/${encodeURIComponent(flagId)}`, undefined, signal),
     updateFeatureFlag: (flagId, patch) =>
       request('PATCH', `/api/feature-flags/${encodeURIComponent(flagId)}`, patch),
-    listAuditEvents: (entityType, entityId, signal) =>
-      request(
-        'GET',
-        `/api/audit-events${toQuery({ entity_type: entityType, entity_id: entityId })}`,
-        undefined,
-        signal,
-      ),
+    listAuditEvents: (filters, signal) =>
+      request('GET', `/api/audit-events${toQuery({ ...filters })}`, undefined, signal),
   }
 }
