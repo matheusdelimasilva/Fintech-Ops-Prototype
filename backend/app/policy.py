@@ -103,3 +103,23 @@ def refund_action_denial(
             },
         )
     return None
+
+
+def feature_flag_edit_denial(role: Role, environment: Environment) -> Denial | None:
+    """Return why `role` may not edit flags in `environment`, or None if allowed.
+
+    Production confirmation is deliberately not an input: it is a request-level safety check
+    that the workflow service applies only after this authorization passes.
+    """
+    policy = policy_for(role)
+    if environment in policy.editable_flag_environments:
+        return None
+    return Denial(
+        ACTION_NOT_PERMITTED_FOR_ROLE,
+        {
+            "role": role.value,
+            "action": "edit_feature_flag",
+            "environment": environment.value,
+            "editable_environments": sorted(e.value for e in policy.editable_flag_environments),
+        },
+    )
