@@ -10,17 +10,16 @@ from app.schemas import FeatureFlagOut, FeatureFlagPatch
 
 router = APIRouter(prefix="/api/feature-flags", tags=["feature-flags"])
 
-_HINT_FIELDS = {"can_edit", "requires_confirmation"}
-
 
 def _flag_out(actor: CurrentUser, flag: FeatureFlag) -> FeatureFlagOut:
-    columns = {
-        name: getattr(flag, name)
-        for name in FeatureFlagOut.model_fields
-        if name not in _HINT_FIELDS
-    }
     return FeatureFlagOut(
-        **columns,
+        id=flag.id,
+        key=flag.key,
+        description=flag.description,
+        environment=flag.environment,
+        enabled=flag.enabled,
+        rollout_percent=flag.rollout_percent,
+        updated_at=flag.updated_at,
         can_edit=feature_flag_service.can_edit(actor, flag),
         requires_confirmation=feature_flag_service.requires_confirmation(flag),
     )

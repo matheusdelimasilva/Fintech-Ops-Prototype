@@ -90,8 +90,8 @@ export function FeatureFlagsPage({ selectedId }: Props) {
           <FeatureFlagDetailPanel
             key={selectedId}
             flagId={selectedId}
-            onMutated={list.reload}
-            listRefreshing={list.state.status === 'loading'}
+            reloadList={list.reload}
+            listStatus={list.state.status}
           />
         )}
       </section>

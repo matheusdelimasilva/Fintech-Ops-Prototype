@@ -329,3 +329,23 @@ def test_flag_changes_requires_at_least_one_field_and_a_valid_rollout() -> None:
         FlagChanges(rollout_percent=-1)
     assert FlagChanges(rollout_percent=0).rollout_percent == 0
     assert FlagChanges(rollout_percent=100).rollout_percent == 100
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"rollout_percent": 12.5},
+        {"rollout_percent": 50.0},
+        {"rollout_percent": True},
+        {"rollout_percent": "50"},
+        {"enabled": 1},
+        {"enabled": 0},
+        {"enabled": "true"},
+    ],
+    ids=["float", "integral-float", "bool-as-int", "numeric-string", "one", "zero", "string"],
+)
+def test_flag_changes_rejects_non_literal_types_independently_of_the_schema(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(TypeError):
+        FlagChanges(**kwargs)  # type: ignore[arg-type]

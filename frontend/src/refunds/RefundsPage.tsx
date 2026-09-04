@@ -69,8 +69,8 @@ export function RefundsPage({ selectedId }: Props) {
           <RefundDetailPanel
             key={selectedId}
             refundId={selectedId}
-            onMutated={queue.reload}
-            queueRefreshing={queue.state.status === 'loading'}
+            reloadQueue={queue.reload}
+            queueStatus={queue.state.status}
           />
         )}
       </section>

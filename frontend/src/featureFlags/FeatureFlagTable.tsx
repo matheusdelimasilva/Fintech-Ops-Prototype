@@ -13,6 +13,7 @@ export function FeatureFlagTable({ flags, selectedId }: Props) {
       <thead>
         <tr>
           <th scope="col">Key</th>
+          <th scope="col">Description</th>
           <th scope="col">Environment</th>
           <th scope="col">State</th>
           <th scope="col" className="numeric">
@@ -40,6 +41,7 @@ export function FeatureFlagTable({ flags, selectedId }: Props) {
                   {flag.key}
                 </a>
               </td>
+              <td className="description">{flag.description}</td>
               <td>
                 <span className={`tag tag-${flag.environment}`}>
                   {ENVIRONMENT_LABELS[flag.environment]}
