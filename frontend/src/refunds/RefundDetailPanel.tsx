@@ -1,13 +1,19 @@
 import { useState } from 'react'
 import { ApiError, toApiError } from '../api/client.ts'
-import type { AuditEvent, Refund, RefundAction } from '../api/types.ts'
+import type { AuditEvent, RefundAction } from '../api/types.ts'
 import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
 import { navigate, refundHash } from '../router.ts'
 import { ErrorNotice } from '../shared/ErrorNotice.tsx'
-import { AUDIT_ACTION_LABELS, REFUND_ACTION_LABELS, formatTimestamp } from '../shared/format.ts'
+import {
+  AUDIT_ACTION_LABELS,
+  REFUND_ACTION_LABELS,
+  REFUND_ACTION_TONE,
+  formatTimestamp,
+} from '../shared/format.ts'
 import { EmptyState, LoadingState } from '../shared/States.tsx'
 import { StatusBanner } from '../shared/StatusBanner.tsx'
+import { noticeKey, useNotices } from '../shared/noticesContext.ts'
 import { useQuery } from '../shared/useQuery.ts'
 import { RefundActionForm } from './RefundActionForm.tsx'
 import { RefundDetail } from './RefundDetail.tsx'
@@ -35,7 +41,11 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
   const [openAction, setOpenAction] = useState<RefundAction | null>(null)
   const [pending, setPending] = useState(false)
   const [actionError, setActionError] = useState<ApiError | null>(null)
-  const [success, setSuccess] = useState<Refund | null>(null)
+
+  const notices = useNotices()
+  const successKey = noticeKey('refund', refundId)
+  const success = notices.notices[successKey]
+  const dismissSuccess = () => notices.dismiss(successKey)
 
   const refund = detail.state.data
   const allowedActions = refund?.allowed_actions ?? []
@@ -47,11 +57,17 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
   async function perform(action: RefundAction, reason: string) {
     setPending(true)
     setActionError(null)
-    setSuccess(null)
+    dismissSuccess()
     try {
       const updated = await client.performRefundAction(refundId, action, reason)
       detail.setData(() => updated)
-      setSuccess(updated)
+      if (updated.last_action) {
+        notices.record(successKey, {
+          action: updated.last_action,
+          actor: updated.last_action_by,
+          at: updated.last_action_at,
+        })
+      }
       setOpenAction(null)
       audit.reload()
       onMutated()
@@ -83,13 +99,13 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
 
   return (
     <>
-      {success && success.last_action && (
-        <StatusBanner onDismiss={() => setSuccess(null)}>
-          <strong>{AUDIT_ACTION_LABELS[success.last_action]}</strong> by {success.last_action_by}
-          {success.last_action_at && (
+      {success && (
+        <StatusBanner onDismiss={dismissSuccess}>
+          <strong>{AUDIT_ACTION_LABELS[success.action]}</strong> by {success.actor}
+          {success.at && (
             <>
               {' '}
-              at <time dateTime={success.last_action_at}>{formatTimestamp(success.last_action_at)}</time>
+              at <time dateTime={success.at}>{formatTimestamp(success.at)}</time>
             </>
           )}
           . Detail updated;{' '}
@@ -127,12 +143,11 @@ export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Prop
               <button
                 key={action}
                 type="button"
-                className={action === 'reject' ? 'danger' : undefined}
+                className={REFUND_ACTION_TONE[action]}
                 aria-pressed={activeForm === action}
                 disabled={pending}
                 onClick={() => {
                   setActionError(null)
-                  setSuccess(null)
                   setOpenAction(activeForm === action ? null : action)
                 }}
               >

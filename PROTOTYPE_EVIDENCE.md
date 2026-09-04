@@ -387,7 +387,9 @@ third round had no open questions). Decisions that bind later checkpoints:
 - After `200`: detail replaced by the response, queue refetched with current
   filters, audit refetched, form closed, dismissible banner built from the
   returned `last_action` / `last_action_by` / `last_action_at` (never from the
-  current identity). After `409`: structured notice plus automatic refetch of
+  current identity). The banner lives in a shared `NoticesProvider` keyed by
+  `refund:<id>`, so it survives switching refunds, pages, or users and
+  disappears only on Dismiss or when a new action is submitted for that refund. After `409`: structured notice plus automatic refetch of
   refund and audit; a form whose action is no longer in the refreshed
   `allowed_actions` closes. Other errors keep the form and reason for retry.
 - Filters (search debounced 300 ms; status/risk immediate) are query params on
@@ -561,3 +563,10 @@ comparing roles) and fix the docs; "Record has changed"; single `toApiError` →
 `UNEXPECTED_ERROR`; `enabled` removed; banner reads "refreshing…" until the
 queue and audit queries settle. Gates re-run: oxlint clean, vitest 48, build
 ok, pytest 153.
+
+Owner browser feedback (same PR): Approve is now green, Escalate grey (Reject
+stays red) via a shared `REFUND_ACTION_TONE` map used by both the action buttons
+and the confirm button; the refund detail renders as two label/value tables
+(`<th scope="row">`) instead of a flat `<dl>`; the success banner persists
+until Dismiss (see above) instead of being lost when the detail panel remounts.
+Gates re-run: oxlint clean, vitest 48, build ok.

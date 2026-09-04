@@ -75,6 +75,13 @@ export const REFUND_ACTION_LABELS: Record<RefundAction, string> = {
   escalate: 'Escalate',
 }
 
+/** Button tone class per action: approve is green, reject red, escalate neutral grey. */
+export const REFUND_ACTION_TONE: Record<RefundAction, 'success' | 'danger' | 'neutral'> = {
+  approve: 'success',
+  reject: 'danger',
+  escalate: 'neutral',
+}
+
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'refund.approved': 'Refund approved',
   'refund.rejected': 'Refund rejected',

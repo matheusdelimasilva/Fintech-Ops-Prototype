@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import type { RefundAction } from '../api/types.ts'
-import { REFUND_ACTION_LABELS } from '../shared/format.ts'
+import { REFUND_ACTION_LABELS, REFUND_ACTION_TONE } from '../shared/format.ts'
 
 interface Props {
   action: RefundAction
@@ -47,7 +47,7 @@ export function RefundActionForm({ action, pending, onConfirm, onCancel }: Props
       <div className="button-row">
         <button
           type="submit"
-          className={action === 'reject' ? 'danger' : undefined}
+          className={REFUND_ACTION_TONE[action]}
           disabled={!trimmed || pending}
         >
           {pending ? 'Submitting…' : `Confirm ${label.toLowerCase()}`}

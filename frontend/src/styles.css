@@ -13,6 +13,7 @@
   --color-error-border: #c62828;
   --color-warning-bg: #fff4d6;
   --color-warning-border: #d9a400;
+  --color-neutral: #5f6673;
   --radius: 4px;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -247,6 +248,16 @@ button.danger {
   background: var(--color-error-border);
 }
 
+button.success {
+  border-color: var(--color-success-border);
+  background: var(--color-success-border);
+}
+
+button.neutral {
+  border-color: var(--color-neutral);
+  background: var(--color-neutral);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -333,23 +344,28 @@ section + section {
   margin-bottom: var(--space-3);
 }
 
-.details-list {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--space-1) var(--space-3);
-  margin: var(--space-2) 0;
+.details-table {
+  margin: var(--space-2) 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-.details-list div {
-  display: contents;
+.details-table th,
+.details-table td {
+  border-bottom: 1px solid var(--color-border);
 }
 
-.details-list dt {
-  color: var(--color-muted);
+.details-table tr:last-child th,
+.details-table tr:last-child td {
+  border-bottom: none;
 }
 
-.details-list dd {
-  margin: 0;
+.details-table th {
+  width: 11rem;
+  background: var(--color-bg);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* Layout for queue + detail */
