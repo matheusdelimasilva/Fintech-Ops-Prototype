@@ -20,8 +20,8 @@ end times explicitly.
 |---|---|---|---|
 | 1 | Runnable skeleton (scaffold + `/health`) | [#1](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/1) | Merged |
 | 2 | Backend foundation: persistence, seed, demo identity, read-only API | [#2](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/2) | Merged |
-| 3 | Refund mutations, RBAC enforcement, atomic audit writes | [#4](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/4) | In review |
-| 4 | Frontend shell + Refund Operations UI | — | Not started |
+| 3 | Refund mutations, RBAC enforcement, atomic audit writes | [#4](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/4) | Merged |
+| 4 | Frontend shell + Refund Operations UI | [#5](https://github.com/matheusdelimasilva/Fintech-Ops-Prototype/pull/5) | In review |
 | 5 | Feature Flags reuse proof | — | Not started |
 | 6 | Final verification and handoff | — | Not started |
 
@@ -349,3 +349,190 @@ lock plus this guard, but that path has not been exercised.
   security-event log is out of scope).
 - Timestamps are naive UTC in SQLite and serialized with a `Z` suffix.
 - Identity remains a plain header with no authentication, session, or CSRF story.
+
+## Checkpoint 4 — Frontend shell + Refund Operations UI (PR #5)
+
+### Planning
+
+Two-round design interview (15 decisions; the owner ended it early because the
+third round had no open questions). Decisions that bind later checkpoints:
+
+- No new runtime dependencies. Navigation is a ~40-line hash router
+  (`#/refunds`, `#/refunds/<id>`, `#/feature-flags`, `#/audit`); data loading
+  is a narrow `useQuery(fetcher, key, {isEmpty, enabled})` hook with abort on
+  key change, `reload()`, and `setData()`. "Empty" is a caller-supplied
+  predicate, not an array assumption.
+- Identity is a React context (`IdentityProvider`) persisted to `localStorage`
+  (default `user_sam_support`). A low-level `createApiClient(userId)` is the
+  only place that sets headers; the context-bound `useApiClient()` sits above
+  it, so the provider never consumes its own context. If the stored id is
+  unknown to the server the switcher shows the `401` and offers "Reset to Sam
+  Support"; the roster itself always comes from `/api/session`.
+- Error contract: `ApiError {status, code, message, details}`. Backend
+  envelopes keep their code/details; a non-JSON or un-enveloped HTTP response
+  is `INVALID_RESPONSE` **with its HTTP status preserved**; `NETWORK_ERROR`
+  (status 0) is reserved for a rejected `fetch`. A pure
+  `describeApiError(error)` chooses the heading from status/code only — no
+  message-string parsing — and formats `*_cents` details as money.
+- Actions the server does not list in `allowed_actions` are **hidden**, with a
+  generic "Available actions are determined by server policy" note. The owner
+  rejected composing a limit-based explanation in the UI because
+  `allowed_actions` alone cannot say *why* (limit, role, or state); a
+  `denied_actions` API extension is noted as a possible follow-up.
+- Reason form: Confirm is disabled while the trimmed reason is empty (UX only);
+  no client `maxLength`, so a 1,001-character reason reaches the server and
+  exercises the `422` rendering path.
+- After `200`: detail replaced by the response, queue refetched with current
+  filters, audit refetched, form closed, dismissible banner built from the
+  returned `last_action` / `last_action_by` / `last_action_at` (never from the
+  current identity). After `409`: structured notice plus automatic refetch of
+  refund and audit; a form whose action is no longer in the refreshed
+  `allowed_actions` closes. Other errors keep the form and reason for retry.
+- Filters (search debounced 300 ms; status/risk immediate) are query params on
+  `GET /api/refunds`; nothing is filtered client-side. The selected refund
+  lives in the hash; filters do not.
+- Timestamps render in UTC inside `<time datetime>`; money via a shared
+  `formatMoney(cents, currency)` that never converts cents to a float.
+- Plain CSS, semantic tables, `aria-current` navigation, labelled controls,
+  visible focus rings, `role="alert"` for errors and `role="status"` for
+  non-urgent updates.
+- Vitest (pinned `4.1.11`, no jsdom / Testing Library) was approved for pure
+  units only; `npm test` joins the gate.
+
+### Delivered
+
+- `frontend/src/api/`: `types.ts` mirrors `schemas.py`; `client.ts` exposes
+  `createApiClient(userId)` with `getSession`, `listRefunds(filters)`,
+  `getRefund`, `performRefundAction`, `listRefundAuditEvents`, and feature-flag
+  reads. Only `Accept`, `Content-Type` (JSON bodies), and `X-Demo-User-Id` are
+  sent.
+- `frontend/src/shared/`: `useQuery`, `describeApiError`, `format`
+  (`formatMoney`, `formatApprovalLimit`, `formatTimestamp`, `formatDate`,
+  labels), `ErrorNotice` (alert, structured details, code + HTTP status,
+  retry/refresh, dismiss), `StatusBanner` (status), `LoadingState`,
+  `EmptyState`.
+- `frontend/src/identity/`: `IdentityProvider`, `context.ts` (`useIdentity`,
+  `useApiClient`), `UserSwitcher` showing server-provided display name, role,
+  approval limit, and "may escalate refunds".
+- `frontend/src/router.ts`, `App.tsx` (title, primary nav, synthetic-data
+  banner, switcher; `<main>` keyed by user id so switching users drops
+  selection, open forms, and stale results).
+- `frontend/src/refunds/`: `RefundsPage`, `RefundFilters`, `RefundQueue`
+  (transaction, customer, amount, risk, status, created), `RefundDetailPanel`
+  (keyed per refund id; detail + audit queries, action state, 200/409
+  handling), `RefundDetail`, `RefundActionForm`.
+- `frontend/src/audit/`: `changedFields` (pure diff) and `AuditEventList`
+  (newest first; actor, role, user id, action, UTC time, reason, changed-field
+  table, raw before/after JSON behind `<details>`). Domain-neutral so Feature
+  Flags and the Audit Trail page can reuse it.
+- Feature Flags and Audit Trail routes render "Not implemented in this
+  checkpoint".
+- README: current state, `npm test`, identity/`allowed_actions` behaviour.
+
+### Commands run and results
+
+```bash
+cd frontend && nvm use 22
+npm run lint                            # oxlint: clean
+npm test                                # vitest: 5 files, 47 tests passed
+npm run build                           # tsc -b && vite build: built
+
+cd backend
+./.venv/bin/pytest                      # 153 passed (unchanged)
+./.venv/bin/ruff check .                # All checks passed
+./.venv/bin/ruff format --check .       # already formatted
+```
+
+`npm install --save-dev --save-exact vitest@4.1.11` failed inside npm's
+Arborist (`Cannot read properties of null (reading 'edgesOut')`) while resolving
+Vitest's optional browser peer dependencies; `--legacy-peer-deps` for that one
+install succeeded, after which a clean `npm ci` reproduces `node_modules`
+from the committed lockfile without flags.
+
+### Automated frontend tests (47, all pure functions, Node environment)
+
+- `api/client.test.ts`: successful JSON; backend envelope → `ApiError` with
+  code/message/details preserved; non-JSON error body and non-JSON 200 body →
+  `INVALID_RESPONSE` with the HTTP status kept; JSON error without the envelope
+  → `INVALID_RESPONSE`; only `X-Demo-User-Id` is added as a caller header;
+  action bodies are `{reason}`; a rejected `fetch` → `NETWORK_ERROR` status 0;
+  `AbortError` propagates untouched.
+- `shared/describeApiError.test.ts`: 401/403/404/409/422/500/`NETWORK_ERROR`/
+  `INVALID_RESPONSE` headings chosen from status/code even when the message
+  text is misleading; `403` details render `approval_limit_cents` as `$500.00`;
+  `409` suggests refresh; `422` validation errors flattened.
+- `shared/format.test.ts`: `$0.00`, `$0.01`, `$500.00`, `$500.01`,
+  `$5,000.00`, `$5,000.01`, large and negative values without float drift;
+  `Unlimited`; UTC timestamp/date; invalid input passthrough.
+- `audit/changedFields.test.ts`: only differing keys, keys present on one side
+  only, identical snapshots, display formatting.
+- `router.test.ts`: every hash form, unknown-route fallback, id round trip.
+
+### Direct HTTP evidence (fresh seed, `curl` against `uvicorn`)
+
+These pair with the UI: Sam's detail view for `rfnd_003` ($500.01) offers only
+**Escalate**, so the `403` below is unreachable from the UI by design and is
+shown here as the server still enforcing it when asked directly.
+
+| Request | Result |
+|---|---|
+| Sam `POST /api/refunds/rfnd_003/approve` | `403 APPROVAL_LIMIT_EXCEEDED`, `details: {role: support_agent, action: approve, amount_cents: 50001, approval_limit_cents: 50000}` |
+| Sam `POST .../rfnd_001/approve` with a 1,001-character reason | `422 VALIDATION_ERROR`, `details.errors[0].type = string_too_long` |
+| Sam `POST .../rfnd_003/escalate` twice | `200` then `409 INVALID_STATE_TRANSITION`, `current_status: escalated`, `allowed_from: ["pending"]` |
+| `GET /api/refunds` with no header | `401 MISSING_IDENTITY` |
+
+### Browser observations (agent smoke check during implementation)
+
+A short manual pass in Chrome against the dev servers, before the owner asked
+the agent to stop taking screenshots: as Sam, `#/refunds/rfnd_003` rendered the
+switcher (Support Agent, `$500.00`, may escalate: Yes), the 12-row queue, and a
+detail panel offering only **Escalate**. Confirming an escalation with a reason
+replaced the detail (status Escalated, last action by Sam Support), updated the
+queue row without a reload, showed the success banner, changed the actions
+area to "No actions are available to you for this refund", and listed one audit
+event with a five-row changed-fields table (`pending → escalated` plus the four
+`last_action*` fields). The browser console showed only Vite/React dev-mode
+info messages. The database was reset to the seed afterwards.
+
+**Not verified in the browser by the agent** (the owner chose to run these
+themselves): Olivia and Avery identities, Olivia approving the escalated refund,
+the two-tab `409`, the 1,001-character `422` rendering, and the empty-search
+state. The corresponding rendering paths are covered by the unit tests above
+and the backend responses by the `curl` table.
+
+### Elapsed milestones
+
+The checkpoint spanned one agent session with a context reset between the design
+interview and implementation, so wall-clock effort was again not captured
+reliably. Branch commit timestamps (`git log --format='%h %ci %s' main..`)
+place the four implementation commits within roughly 10 minutes of each other on
+2026-09-03 (UTC); the shared foundations had been written before the first of
+them was committed, so that span understates the work.
+
+### Human interventions
+
+- Design interview: 15 decisions answered by the project owner; the owner
+  amended five recommendations (non-JSON responses are `INVALID_RESPONSE`, not
+  `NETWORK_ERROR`; hide denied actions instead of composing a limit-based
+  explanation; build success text from returned metadata; the provider must
+  not consume its own context; `curl` rather than DevTools for the direct-403
+  evidence, plus a pure presentation function for unit tests).
+- The owner asked the agent to stop computer-use screenshots and to leave
+  browser verification to them; the testing-agent run planned for this
+  checkpoint was therefore not performed.
+
+### Limitations at this checkpoint
+
+- The UI cannot explain *why* an action is unavailable; it only knows the
+  server's `allowed_actions`. A `denied_actions: [{action, code, details}]`
+  field on `RefundOut` would let it, and is the one API awkwardness surfaced
+  by this slice.
+- Feature Flags and the standalone Audit Trail pages are placeholders.
+- Frontend tests cover pure functions only; component behaviour (form gating,
+  409 refetch, form auto-close) is exercised manually, not by automated tests.
+- Filters are not persisted in the URL; reloading returns to unfiltered.
+- Refund ids appear in the hash; deep links to a refund another user may not
+  act on simply show no actions.
+- No optimistic UI, pagination, or polling; the queue refetches only after the
+  current user's own mutation or a filter change, so another tab's change
+  surfaces as a `409` on submit rather than proactively.

@@ -339,9 +339,9 @@ Detailed per-checkpoint evidence lives in `PROTOTYPE_EVIDENCE.md`.
 
 | Phase | Status | Notes |
 |---|---|---|
-| 1 — Foundation | **Done** (PR #1, PR #2) | Backend complete: persistence, seed/reset, demo identity, error envelope, read-only endpoints for refunds, feature flags, audit, and session. Frontend is still the scaffold placeholder and does not yet call `/api/*`. |
-| 2 — Refund workflow | **Backend done** (PR #4); UI not started | `POST /api/refunds/{id}/approve\|reject\|escalate` with required trimmed reasons, declarative state machine, guarded conditional update, and `allowed_actions` per caller. Queue/detail/action UI (steps 2 and 4) remains. |
-| 3 — RBAC and audit | **Backend done** (PR #4); UI not started | Pure `refund_action_denial` policy with structured `403` codes, admin cannot escalate, USD-only fail-closed, audit event written in the same transaction as the refund, boundary/bypass/ordering/atomicity tests. Audit UI (step 4) remains. |
+| 1 — Foundation | **Done** (PR #1, PR #2, PR #5) | Backend: persistence, seed/reset, demo identity, error envelope, read-only endpoints for refunds, feature flags, audit, and session. Frontend (PR #5): shell, hash router, identity context, shared API client with `ApiError`, `useQuery`, formatters, error/status/loading/empty primitives. |
+| 2 — Refund workflow | **Done** (backend PR #4, UI PR #5) | `POST /api/refunds/{id}/approve\|reject\|escalate` with required trimmed reasons, declarative state machine, guarded conditional update, and `allowed_actions` per caller. UI: server-filtered queue, hash-selected detail, inline action forms, post-mutation refresh. |
+| 3 — RBAC and audit | **Done for refunds** (backend PR #4, UI PR #5) | Pure `refund_action_denial` policy with structured `403` codes, admin cannot escalate, USD-only fail-closed, audit event written in the same transaction as the refund, boundary/bypass/ordering/atomicity tests. UI renders only `allowed_actions`, shows structured `401/403/409/422` envelopes, and lists the refund's audit events with changed-field diffs. Standalone Audit Trail page is still a placeholder. |
 | 4 — Feature Flags reuse proof | Not started | Model, seed, and read endpoints (part of step 1) already exist. |
 | 5 — Verification and handoff | Not started | |
 
