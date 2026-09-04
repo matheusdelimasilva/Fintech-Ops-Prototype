@@ -15,7 +15,7 @@ interface Props {
 export function AuditEventList({ events }: Props) {
   const ordered = [...events].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
   return (
-    <ol className="audit-list" aria-label="Audit events, newest first">
+    <ol className="audit-timeline" aria-label="Audit events, newest first">
       {ordered.map((event) => {
         const changes = changedFields(event.before_state, event.after_state)
         return (
@@ -24,36 +24,38 @@ export function AuditEventList({ events }: Props) {
               <strong>{AUDIT_ACTION_LABELS[event.action] ?? event.action}</strong>
               <time dateTime={event.occurred_at}>{formatTimestamp(event.occurred_at)}</time>
             </div>
-            <p>
+            <p className="audit-event-meta">
               {event.actor_display_name}{' '}
               <span className="muted">
                 ({ROLE_LABELS[event.actor_role] ?? event.actor_role}, <code>{event.actor_user_id}</code>)
               </span>
             </p>
-            <p>
+            <p className="audit-event-meta">
               <span className="muted">Reason:</span> {event.reason}
             </p>
             {changes.length > 0 ? (
-              <table aria-label={`Changed fields for ${event.id}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Field</th>
-                    <th scope="col">Before</th>
-                    <th scope="col">After</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {changes.map((change) => (
-                    <tr key={change.key}>
-                      <th scope="row">{humanizeKey(change.key)}</th>
-                      <td>{formatSnapshotValue(change.before)}</td>
-                      <td>{formatSnapshotValue(change.after)}</td>
+              <div className="table-scroll">
+                <table className="compact-table" aria-label={`Changed fields for ${event.id}`}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Field</th>
+                      <th scope="col">Before</th>
+                      <th scope="col">After</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {changes.map((change) => (
+                      <tr key={change.key}>
+                        <th scope="row">{humanizeKey(change.key)}</th>
+                        <td>{formatSnapshotValue(change.before)}</td>
+                        <td>{formatSnapshotValue(change.after)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <p className="muted">No field changes recorded.</p>
+              <p className="muted audit-event-meta">No field changes recorded.</p>
             )}
             <details>
               <summary>Raw before/after snapshots</summary>

@@ -1,4 +1,11 @@
-import type { AuditAction, RefundAction, RefundStatus, RiskLevel, Role } from '../api/types.ts'
+import type {
+  AuditAction,
+  PaymentStatus,
+  RefundAction,
+  RefundStatus,
+  RiskLevel,
+  Role,
+} from '../api/types.ts'
 
 const moneyFormatters = new Map<string, Intl.NumberFormat>()
 
@@ -69,17 +76,23 @@ export const RISK_LABELS: Record<RiskLevel, string> = {
   high: 'High',
 }
 
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  captured: 'Captured',
+  settled: 'Settled',
+  disputed: 'Disputed',
+}
+
 export const REFUND_ACTION_LABELS: Record<RefundAction, string> = {
   approve: 'Approve',
   reject: 'Reject',
   escalate: 'Escalate',
 }
 
-/** Button tone class per action: approve is green, reject red, escalate neutral grey. */
-export const REFUND_ACTION_TONE: Record<RefundAction, 'success' | 'danger' | 'neutral'> = {
+/** Button tone class per action: approve is positive, escalate is warning, reject is destructive. */
+export const REFUND_ACTION_TONE: Record<RefundAction, 'success' | 'danger' | 'warning'> = {
   approve: 'success',
   reject: 'danger',
-  escalate: 'neutral',
+  escalate: 'warning',
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {

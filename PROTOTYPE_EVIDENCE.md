@@ -570,3 +570,25 @@ and the confirm button; the refund detail renders as two label/value tables
 (`<th scope="row">`) instead of a flat `<dl>`; the success banner persists
 until Dismiss (see above) instead of being lost when the detail panel remounts.
 Gates re-run: oxlint clean, vitest 48, build ok.
+
+### Visual-polish pass (follow-up PR, CSS and presentation only)
+
+Owner-requested presentation pass after Checkpoint 4, with no framework or
+component-library dependency and no change to API contracts, authorization
+behaviour, or test selectors. Delivered: shared design tokens in `styles.css`
+(colour, spacing, radius, shadows, typography, focus ring) that Feature Flags
+will inherit; a centred 1560px shell with a 24px gap and a two-column
+queue/detail split that stacks below 1100px; compact `<details>` demo banner;
+identity card in the header (selector, then role/limit/escalate badges); wider
+search, quiet "Clear filters", and a live "N refunds" count; sticky queue
+header, right-aligned tabular amounts, monospace references, hover and
+selected-row cues (blue left border plus pale background); a detail summary
+(customer + amount, then status/payment/risk badges, then ids), Actions moved
+directly beneath it with success/warning/danger tones, one-line policy copy
+with a `<details>` expansion, metadata grouped into Refund / Transaction /
+Activity, compact empty state, and a timeline treatment for audit events.
+`humanizeKey` renders reason codes such as `item_not_received` as
+"Item not received". Gates re-run: oxlint clean, vitest 48, build ok, ruff
+clean, pytest 153. Playwright-over-CDP smoke at 1600px and 900px as Sam and
+Olivia (pending, escalated, rejected refunds; reject form open) reported no
+console errors.

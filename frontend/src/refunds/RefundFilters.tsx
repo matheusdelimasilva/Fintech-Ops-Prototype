@@ -31,7 +31,7 @@ export function RefundFilters({ filters, onChange }: Props) {
       aria-label="Refund filters"
       onSubmit={(event) => event.preventDefault()}
     >
-      <div className="field">
+      <div className="field filters-search">
         <label htmlFor="refund-search">Search</label>
         <input
           id="refund-search"
@@ -41,7 +41,7 @@ export function RefundFilters({ filters, onChange }: Props) {
           onChange={(event) => setSearchText(event.target.value)}
         />
       </div>
-      <div className="field">
+      <div className="field filters-compact">
         <label htmlFor="refund-status">Status</label>
         <select
           id="refund-status"
@@ -61,7 +61,7 @@ export function RefundFilters({ filters, onChange }: Props) {
           ))}
         </select>
       </div>
-      <div className="field">
+      <div className="field filters-compact">
         <label htmlFor="refund-risk">Risk</label>
         <select
           id="refund-risk"
@@ -84,7 +84,7 @@ export function RefundFilters({ filters, onChange }: Props) {
       {(filters.search || filters.status || filters.risk_level) && (
         <button
           type="button"
-          className="secondary"
+          className="link"
           onClick={() => {
             setSearchText('')
             onChange({})
