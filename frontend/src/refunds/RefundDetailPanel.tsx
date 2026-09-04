@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiError, NETWORK_ERROR } from '../api/client.ts'
+import { ApiError, toApiError } from '../api/client.ts'
 import type { AuditEvent, Refund, RefundAction } from '../api/types.ts'
 import { AuditEventList } from '../audit/AuditEventList.tsx'
 import { useApiClient } from '../identity/context.ts'
@@ -16,12 +16,14 @@ interface Props {
   refundId: string
   /** Called after a successful mutation so the parent can refresh the queue. */
   onMutated: () => void
+  /** True while the parent's queue refetch is still in flight. */
+  queueRefreshing: boolean
 }
 
 const isEmptyList = (events: AuditEvent[]) => events.length === 0
 
 /** Mounted per refund id (keyed by the parent) so no state leaks between refunds. */
-export function RefundDetailPanel({ refundId, onMutated }: Props) {
+export function RefundDetailPanel({ refundId, onMutated, queueRefreshing }: Props) {
   const client = useApiClient()
   const detail = useQuery((signal) => client.getRefund(refundId, signal), refundId)
   const audit = useQuery(
@@ -37,6 +39,7 @@ export function RefundDetailPanel({ refundId, onMutated }: Props) {
 
   const refund = detail.state.data
   const allowedActions = refund?.allowed_actions ?? []
+  const refreshing = queueRefreshing || audit.state.status === 'loading'
 
   // A form for an action the server no longer offers (e.g. after a 409 refresh) is stale.
   const activeForm = openAction && allowedActions.includes(openAction) ? openAction : null
@@ -53,10 +56,7 @@ export function RefundDetailPanel({ refundId, onMutated }: Props) {
       audit.reload()
       onMutated()
     } catch (error: unknown) {
-      const apiError =
-        error instanceof ApiError
-          ? error
-          : new ApiError(0, NETWORK_ERROR, 'Could not reach the backend.')
+      const apiError = toApiError(error)
       setActionError(apiError)
       if (apiError.status === 409) {
         detail.reload()
@@ -92,7 +92,8 @@ export function RefundDetailPanel({ refundId, onMutated }: Props) {
               at <time dateTime={success.last_action_at}>{formatTimestamp(success.last_action_at)}</time>
             </>
           )}
-          . Queue, detail, and audit trail refreshed.
+          . Detail updated;{' '}
+          {refreshing ? 'refreshing queue and audit trail…' : 'queue and audit trail refreshed.'}
         </StatusBanner>
       )}
       {actionError && (

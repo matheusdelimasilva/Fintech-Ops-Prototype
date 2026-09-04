@@ -4,8 +4,10 @@ import {
   IDENTITY_HEADER,
   INVALID_RESPONSE,
   NETWORK_ERROR,
+  UNEXPECTED_ERROR,
   createApiClient,
   parseResponse,
+  toApiError,
 } from './client.ts'
 
 const json = (status: number, body: unknown) =>
@@ -111,6 +113,18 @@ describe('createApiClient', () => {
     const client = createApiClient('user_sam_support', fetchImpl, 'http://api.test')
     const error = await capture(client.getSession())
     expect(error).toMatchObject({ status: 0, code: NETWORK_ERROR })
+  })
+
+  it('toApiError passes ApiError through and labels anything else UNEXPECTED_ERROR, not network', () => {
+    const original = new ApiError(403, 'X', 'x')
+    expect(toApiError(original)).toBe(original)
+    const bug = toApiError(new TypeError("Cannot read properties of undefined (reading 'id')"))
+    expect(bug).toMatchObject({
+      status: 0,
+      code: UNEXPECTED_ERROR,
+      message: "Cannot read properties of undefined (reading 'id')",
+    })
+    expect(toApiError('boom')).toMatchObject({ code: UNEXPECTED_ERROR, message: 'boom' })
   })
 
   it('lets AbortError propagate untouched so stale requests are ignored, not shown', async () => {

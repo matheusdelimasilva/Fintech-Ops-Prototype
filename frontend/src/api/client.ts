@@ -15,6 +15,8 @@ export const IDENTITY_HEADER = 'X-Demo-User-Id'
 /** Codes the client itself produces; every other code comes from the backend envelope. */
 export const NETWORK_ERROR = 'NETWORK_ERROR'
 export const INVALID_RESPONSE = 'INVALID_RESPONSE'
+/** A failure that is neither an HTTP response nor a rejected fetch: a bug in the caller's code. */
+export const UNEXPECTED_ERROR = 'UNEXPECTED_ERROR'
 
 export class ApiError extends Error {
   /** HTTP status; 0 when the request never produced a response. */
@@ -29,6 +31,13 @@ export class ApiError extends Error {
     this.code = code
     this.details = details
   }
+}
+
+/** Normalizes anything thrown along a request path; only `fetch` itself may produce NETWORK_ERROR. */
+export function toApiError(error: unknown): ApiError {
+  if (error instanceof ApiError) return error
+  const message = error instanceof Error ? error.message : String(error)
+  return new ApiError(0, UNEXPECTED_ERROR, message || 'An unexpected error occurred.')
 }
 
 interface ErrorEnvelope {

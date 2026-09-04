@@ -108,7 +108,9 @@ The acting demo user is chosen in the header (default Sam Support) and stored in
 `localStorage`; the browser sends only that user's ID in `X-Demo-User-Id`. Role,
 approval limit, and per-refund `allowed_actions` shown in the UI all come from
 the server. Actions the server does not allow are simply not offered; the
-backend still re-authorizes every submitted action.
+backend still re-authorizes every submitted action. Switching users keeps the
+refund selected in the URL hash (so the same case can be compared across roles)
+and refetches everything for the new identity.
 
 ### Seed/reset
 

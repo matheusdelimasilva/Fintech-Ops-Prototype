@@ -359,7 +359,7 @@ third round had no open questions). Decisions that bind later checkpoints:
 
 - No new runtime dependencies. Navigation is a ~40-line hash router
   (`#/refunds`, `#/refunds/<id>`, `#/feature-flags`, `#/audit`); data loading
-  is a narrow `useQuery(fetcher, key, {isEmpty, enabled})` hook with abort on
+  is a narrow `useQuery(fetcher, key, {isEmpty})` hook with abort on
   key change, `reload()`, and `setData()`. "Empty" is a caller-supplied
   predicate, not an array assumption.
 - Identity is a React context (`IdentityProvider`) persisted to `localStorage`
@@ -371,7 +371,9 @@ third round had no open questions). Decisions that bind later checkpoints:
 - Error contract: `ApiError {status, code, message, details}`. Backend
   envelopes keep their code/details; a non-JSON or un-enveloped HTTP response
   is `INVALID_RESPONSE` **with its HTTP status preserved**; `NETWORK_ERROR`
-  (status 0) is reserved for a rejected `fetch`. A pure
+  (status 0) is reserved for a rejected `fetch`; anything else thrown on a
+  request path (a programming error) is normalized once, by `toApiError`, to
+  `UNEXPECTED_ERROR` so bugs are never reported as connectivity. A pure
   `describeApiError(error)` chooses the heading from status/code only — no
   message-string parsing — and formats `*_cents` details as money.
 - Actions the server does not list in `allowed_actions` are **hidden**, with a
@@ -415,8 +417,11 @@ third round had no open questions). Decisions that bind later checkpoints:
   `useApiClient`), `UserSwitcher` showing server-provided display name, role,
   approval limit, and "may escalate refunds".
 - `frontend/src/router.ts`, `App.tsx` (title, primary nav, synthetic-data
-  banner, switcher; `<main>` keyed by user id so switching users drops
-  selection, open forms, and stale results).
+  banner, switcher; `<main>` keyed by user id so switching users remounts
+  the page — open forms, filters, and cached results are dropped and refetched
+  for the new identity. The **hash-selected refund is deliberately kept**, so
+  the same refund can be compared across roles; only its `allowed_actions`
+  change).
 - `frontend/src/refunds/`: `RefundsPage`, `RefundFilters`, `RefundQueue`
   (transaction, customer, amount, risk, status, created), `RefundDetailPanel`
   (keyed per refund id; detail + audit queries, action state, 200/409
@@ -434,7 +439,7 @@ third round had no open questions). Decisions that bind later checkpoints:
 ```bash
 cd frontend && nvm use 22
 npm run lint                            # oxlint: clean
-npm test                                # vitest: 5 files, 47 tests passed
+npm test                                # vitest: 5 files, 48 tests passed
 npm run build                           # tsc -b && vite build: built
 
 cd backend
@@ -449,16 +454,18 @@ Vitest's optional browser peer dependencies; `--legacy-peer-deps` for that one
 install succeeded, after which a clean `npm ci` reproduces `node_modules`
 from the committed lockfile without flags.
 
-### Automated frontend tests (47, all pure functions, Node environment)
+### Automated frontend tests (48, all pure functions, Node environment)
 
 - `api/client.test.ts`: successful JSON; backend envelope → `ApiError` with
   code/message/details preserved; non-JSON error body and non-JSON 200 body →
   `INVALID_RESPONSE` with the HTTP status kept; JSON error without the envelope
   → `INVALID_RESPONSE`; only `X-Demo-User-Id` is added as a caller header;
   action bodies are `{reason}`; a rejected `fetch` → `NETWORK_ERROR` status 0;
-  `AbortError` propagates untouched.
+  `toApiError` passes `ApiError` through and labels other throwables
+  `UNEXPECTED_ERROR`; `AbortError` propagates untouched.
 - `shared/describeApiError.test.ts`: 401/403/404/409/422/500/`NETWORK_ERROR`/
-  `INVALID_RESPONSE` headings chosen from status/code even when the message
+  `INVALID_RESPONSE`/`UNEXPECTED_ERROR` headings (409 is the domain-neutral
+  "Record has changed") chosen from status/code even when the message
   text is misleading; `403` details render `approval_limit_cents` as `$500.00`;
   `409` suggests refresh; `422` validation errors flattened.
 - `shared/format.test.ts`: `$0.00`, `$0.01`, `$500.00`, `$500.01`,
@@ -532,7 +539,25 @@ them was committed, so that span understates the work.
   409 refetch, form auto-close) is exercised manually, not by automated tests.
 - Filters are not persisted in the URL; reloading returns to unfiltered.
 - Refund ids appear in the hash; deep links to a refund another user may not
-  act on simply show no actions.
+  act on simply show no actions. The selection survives a user switch (the
+  round-1 design note said it would clear; keeping it was judged more useful
+  for comparing roles and the code/docs now agree).
+- The post-mutation banner reads "refreshing queue and audit trail…" until
+  both refetches settle, then "refreshed"; a failed refetch is reported by the
+  queue/audit error notices, not by the banner.
 - No optimistic UI, pagination, or polling; the queue refetches only after the
   current user's own mutation or a filter change, so another tab's change
   surfaces as a `409` on submit rather than proactively.
+
+### Review follow-up (same PR)
+
+Owner review after the PR opened found: the ledger claimed switching users
+clears the hash-selected refund (it does not); refund-specific wording in the
+shared `409` heading; unexpected-error normalization duplicated in `useQuery`
+and `RefundDetailPanel`, both mislabelling programming failures as network
+failures; unused `useQuery.enabled`; the success banner claiming refreshes had
+completed while they were in flight. Resolution: keep the selection (better for
+comparing roles) and fix the docs; "Record has changed"; single `toApiError` →
+`UNEXPECTED_ERROR`; `enabled` removed; banner reads "refreshing…" until the
+queue and audit queries settle. Gates re-run: oxlint clean, vitest 48, build
+ok, pytest 153.

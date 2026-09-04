@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ApiError, INVALID_RESPONSE, NETWORK_ERROR } from '../api/client.ts'
+import { ApiError, INVALID_RESPONSE, NETWORK_ERROR, UNEXPECTED_ERROR } from '../api/client.ts'
 import { describeApiError } from './describeApiError.ts'
 
 describe('describeApiError', () => {
@@ -31,7 +31,7 @@ describe('describeApiError', () => {
   it.each([
     [401, 'Identity not recognized'],
     [404, 'Not found'],
-    [409, 'Refund has changed'],
+    [409, 'Record has changed'],
     [422, 'Check your input'],
     [500, 'Something went wrong'],
   ])('maps HTTP %i to "%s"', (status, heading) => {
@@ -60,6 +60,9 @@ describe('describeApiError', () => {
     expect(describeApiError(new ApiError(0, NETWORK_ERROR, 'x')).heading).toBe('Backend unreachable')
     expect(describeApiError(new ApiError(502, INVALID_RESPONSE, 'x')).heading).toBe(
       'Unexpected response from the backend',
+    )
+    expect(describeApiError(new ApiError(0, UNEXPECTED_ERROR, 'x')).heading).toBe(
+      'Something went wrong in the app',
     )
   })
 })

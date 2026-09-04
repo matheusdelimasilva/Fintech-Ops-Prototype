@@ -66,7 +66,12 @@ export function RefundsPage({ selectedId }: Props) {
             <p className="muted">Choose a refund from the queue to see its context and actions.</p>
           </EmptyState>
         ) : (
-          <RefundDetailPanel key={selectedId} refundId={selectedId} onMutated={queue.reload} />
+          <RefundDetailPanel
+            key={selectedId}
+            refundId={selectedId}
+            onMutated={queue.reload}
+            queueRefreshing={queue.state.status === 'loading'}
+          />
         )}
       </section>
     </div>

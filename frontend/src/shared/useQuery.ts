@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, NETWORK_ERROR } from '../api/client.ts'
+import { ApiError, toApiError } from '../api/client.ts'
 
 export type QueryState<T> =
   | { status: 'loading'; data: T | undefined }
@@ -18,7 +18,6 @@ export interface QueryResult<T> {
 export interface QueryOptions<T> {
   /** Distinguishes an empty result from a populated one; defaults to "never empty". */
   isEmpty?: (data: T) => boolean
-  enabled?: boolean
 }
 
 /**
@@ -31,7 +30,7 @@ export function useQuery<T>(
   key: string,
   options: QueryOptions<T> = {},
 ): QueryResult<T> {
-  const { isEmpty, enabled = true } = options
+  const { isEmpty } = options
   const [state, setState] = useState<QueryState<T>>({ status: 'loading', data: undefined })
   const [version, setVersion] = useState(0)
   const latestData = useRef<T | undefined>(undefined)
@@ -44,7 +43,6 @@ export function useQuery<T>(
   })
 
   useEffect(() => {
-    if (!enabled) return
     const controller = new AbortController()
     setState({ status: 'loading', data: latestData.current })
 
@@ -59,15 +57,11 @@ export function useQuery<T>(
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
-        const apiError =
-          error instanceof ApiError
-            ? error
-            : new ApiError(0, NETWORK_ERROR, 'Could not reach the backend.')
-        setState({ status: 'error', error: apiError, data: latestData.current })
+        setState({ status: 'error', error: toApiError(error), data: latestData.current })
       })
 
     return () => controller.abort()
-  }, [key, version, enabled])
+  }, [key, version])
 
   const reload = useCallback(() => setVersion((v) => v + 1), [])
   const setData = useCallback((updater: (previous: T | undefined) => T) => {

@@ -1,4 +1,4 @@
-import { ApiError, INVALID_RESPONSE, NETWORK_ERROR } from '../api/client.ts'
+import { ApiError, INVALID_RESPONSE, NETWORK_ERROR, UNEXPECTED_ERROR } from '../api/client.ts'
 import { formatMoney, humanizeKey } from './format.ts'
 
 export interface ErrorPresentation {
@@ -27,6 +27,7 @@ export function describeApiError(error: ApiError): ErrorPresentation {
 function headingFor(error: ApiError): string {
   if (error.code === NETWORK_ERROR) return 'Backend unreachable'
   if (error.code === INVALID_RESPONSE) return 'Unexpected response from the backend'
+  if (error.code === UNEXPECTED_ERROR) return 'Something went wrong in the app'
   switch (error.status) {
     case 401:
       return 'Identity not recognized'
@@ -35,7 +36,7 @@ function headingFor(error: ApiError): string {
     case 404:
       return 'Not found'
     case 409:
-      return 'Refund has changed'
+      return 'Record has changed'
     case 422:
       return 'Check your input'
     default:
