@@ -73,7 +73,7 @@ def test_audit_failure_rolls_back_the_refund_update(
     def explode(*_: Any, **__: Any) -> AuditEvent:
         raise RuntimeError("audit store unavailable")
 
-    monkeypatch.setattr(refund_service, "record_refund_event", explode)
+    monkeypatch.setattr(refund_service, "record_event", explode)
 
     with factory() as session:
         before_count = _audit_count(session)

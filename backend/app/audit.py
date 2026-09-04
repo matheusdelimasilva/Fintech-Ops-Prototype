@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.identity import CurrentUser
-from app.models import AuditAction, AuditEvent, EntityType, RefundCase
+from app.models import AuditAction, AuditEvent, EntityType, FeatureFlag, RefundCase
 from app.timeutil import to_utc_iso
 
 
@@ -27,13 +27,26 @@ def refund_snapshot(refund: RefundCase) -> dict[str, object]:
     }
 
 
-def record_refund_event(
+def feature_flag_snapshot(flag: FeatureFlag) -> dict[str, object]:
+    """JSON-safe view of the flag fields an update can change, plus what identifies the flag."""
+    return {
+        "key": flag.key,
+        "environment": flag.environment.value,
+        "enabled": flag.enabled,
+        "rollout_percent": flag.rollout_percent,
+        "updated_at": to_utc_iso(flag.updated_at),
+    }
+
+
+def record_event(
     session: Session,
     *,
     actor: CurrentUser,
     action: AuditAction,
-    refund: RefundCase,
+    entity_type: EntityType,
+    entity_id: str,
     before_state: dict[str, object],
+    after_state: dict[str, object],
     reason: str,
     occurred_at: datetime,
 ) -> AuditEvent:
@@ -45,10 +58,10 @@ def record_refund_event(
         actor_display_name=actor.display_name,
         actor_role=actor.role,
         action=action,
-        entity_type=EntityType.REFUND,
-        entity_id=refund.id,
+        entity_type=entity_type,
+        entity_id=entity_id,
         before_state=before_state,
-        after_state=refund_snapshot(refund),
+        after_state=after_state,
         reason=reason,
     )
     session.add(event)

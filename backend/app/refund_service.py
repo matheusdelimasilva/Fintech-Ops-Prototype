@@ -10,7 +10,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app import repositories
-from app.audit import record_refund_event, refund_snapshot
+from app.audit import record_event, refund_snapshot
 from app.errors import (
     ActionNotPermittedForRoleError,
     AppError,
@@ -20,7 +20,7 @@ from app.errors import (
     UnsupportedCurrencyError,
 )
 from app.identity import CurrentUser
-from app.models import AuditAction, RefundCase, RefundStatus
+from app.models import AuditAction, EntityType, RefundCase, RefundStatus
 from app.policy import (
     ACTION_NOT_PERMITTED_FOR_ROLE,
     APPROVAL_LIMIT_EXCEEDED,
@@ -160,12 +160,14 @@ def perform_refund_action(
                 f"Refund changed from {observed_status.value} to {refund.refund_status.value} "
                 f"before this {action.value} could be applied.",
             )
-        record_refund_event(
+        record_event(
             session,
             actor=actor,
             action=transition.audit_action,
-            refund=refund,
+            entity_type=EntityType.REFUND,
+            entity_id=refund.id,
             before_state=before_state,
+            after_state=refund_snapshot(refund),
             reason=reason,
             occurred_at=now,
         )
