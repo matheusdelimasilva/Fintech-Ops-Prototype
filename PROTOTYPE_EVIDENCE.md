@@ -805,7 +805,7 @@ gates followed immediately after.
   prevents direct SQLite edits, and there is no hash chain, WORM storage, or
   external log shipping.
 
-### Post-merge review fixes (PR #7)
+### Post-merge review fixes (PR #8)
 
 Owner review of the merged PR #6 raised ten points; this follow-up branch was
 cut from the merged `main`. What changed, and what deliberately did not:
